@@ -3,6 +3,8 @@
 System-wide speech-to-text desktop app powered by [OpenAI Whisper API](https://platform.openai.com/docs/guides/speech-to-text).  
 Built with **Tauri 2.0** (Rust) + **React** + **TypeScript**.
 
+![Taurophone Screenshot](docs/screenshot.png)
+
 
 ## Download
 
