@@ -107,7 +107,7 @@ cargo tauri dev
 | Backend | Rust |
 | Frontend | React + TypeScript + Vite |
 | Audio | cpal (cross-platform) |
-| Transcription | OpenAI Whisper API |
+| Transcription | OpenAI Whisper API (whisper-1, ~$0.006/min) |
 | Clipboard | arboard |
 | Global keys | rdev + tauri-plugin-global-shortcut |
 
