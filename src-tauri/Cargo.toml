@@ -1,7 +1,7 @@
 [package]
 name = "taurophone"
 version = "0.1.0"
-description = "Whisper Client - Speech-to-Text Desktop App"
+description = "Taurophone - Speech-to-Text Desktop App"
 authors = ["you"]
 license = ""
 repository = ""

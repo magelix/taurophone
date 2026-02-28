@@ -45,6 +45,59 @@ pub fn emit_status(app: &AppHandle, status: Status) {
     let _ = app.emit("status-changed", status.as_str());
 }
 
+/// Processes audio data: transcribes it, saves to history, and injects text.
+/// Shared by both the Tauri command and hotkey/doubletap handlers.
+pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
+    let state = app.state::<AppState>();
+    let settings = state.settings.lock().unwrap().clone();
+
+    if settings.api_key.is_empty() {
+        emit_status(&app, Status::Idle);
+        let _ = app.emit("transcription-error", "API key not configured");
+        return;
+    }
+
+    emit_status(&app, Status::Transcribing);
+
+    match whisper::transcribe(&settings.api_key, audio_data, &settings.language).await {
+        Ok(text) => {
+            log::info!("Transcription: {}", text);
+
+            {
+                let mut history = state.history.lock().unwrap();
+                history.add_entry(text.clone());
+                if let Err(e) = settings::save_history(&history) {
+                    log::error!("Failed to save history: {}", e);
+                }
+            }
+
+            if let Err(e) = text_inject::inject_text(&text) {
+                log::error!("Failed to inject text: {}", e);
+                let _ = app.emit("transcription-error", e.to_string());
+            } else {
+                let _ = app.emit("transcription-result", text);
+            }
+        }
+        Err(e) => {
+            log::error!("Transcription failed: {}", e);
+            let _ = app.emit("transcription-error", e);
+        }
+    }
+
+    emit_status(&app, Status::Idle);
+}
+
+/// Starts recording with the configured microphone.
+pub fn start_recording_with_settings(state: &AppState) -> Result<(), String> {
+    let microphone = state.settings.lock().unwrap().microphone.clone();
+    let mic_ref = if microphone == "default" {
+        None
+    } else {
+        Some(microphone)
+    };
+    state.recorder.start_recording(mic_ref.as_deref())
+}
+
 #[tauri::command]
 fn get_settings(state: tauri::State<AppState>) -> AppSettings {
     state.settings.lock().unwrap().clone()
@@ -61,7 +114,6 @@ fn save_settings(
     settings::save_settings(&settings)?;
     *state.settings.lock().unwrap() = settings.clone();
 
-    // Handle hotkey mode changes
     if old_settings.hotkey_mode != settings.hotkey_mode || old_settings.hotkey != settings.hotkey {
         update_hotkey_listener(&app, &settings)?;
     }
@@ -72,21 +124,17 @@ fn save_settings(
 fn update_hotkey_listener(app: &AppHandle, settings: &AppSettings) -> Result<(), String> {
     let state = app.state::<AppState>();
 
-    // Stop existing double-tap listener if any
     if let Some(listener) = state.doubletap_listener.lock().unwrap().take() {
         listener.stop();
     }
 
-    // Unregister existing global shortcut
     let _ = app.global_shortcut().unregister_all();
 
     match &settings.hotkey_mode {
         HotkeyMode::KeyCombination => {
-            // Register the combo hotkey
             register_shortcut(app, &settings.hotkey)?;
         }
         mode => {
-            // Start double-tap listener
             let listener = DoubleTapListener::new();
             listener.start(app.clone(), mode.clone());
             *state.doubletap_listener.lock().unwrap() = Some(listener);
@@ -115,84 +163,27 @@ fn clear_history(state: tauri::State<AppState>) -> Result<(), String> {
 
 #[tauri::command]
 fn copy_to_clipboard(text: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
-    // Use the persistent clipboard instance from AppState
-    // (arboard on X11 clears clipboard when Clipboard is dropped)
     let mut clipboard = state.clipboard.lock().unwrap();
-    clipboard.set_text(&text).map_err(|e| e.to_string())?;
-    log::info!("Copied to clipboard: {} chars", text.len());
-    Ok(())
+    clipboard.set_text(&text).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn toggle_recording(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
-    let is_recording = state.recorder.is_recording();
-    log::info!("toggle_recording: is_recording={}", is_recording);
-
-    if is_recording {
-        // Clone recorder to move into blocking task (avoids blocking the UI thread)
+    if state.recorder.is_recording() {
         let recorder = state.recorder.clone();
-        let audio_data = tokio::task::spawn_blocking(move || {
-            recorder.stop_recording()
-        }).await.map_err(|e| format!("Join error: {}", e))??;
-        log::info!("toggle_recording: stopped, {} bytes", audio_data.len());
-        emit_status(&app, Status::Transcribing);
+        let audio_data = tokio::task::spawn_blocking(move || recorder.stop_recording())
+            .await
+            .map_err(|e| format!("Join error: {}", e))??;
 
-        let settings = state.settings.lock().unwrap().clone();
-
-        if settings.api_key.is_empty() {
-            emit_status(&app, Status::Idle);
-            let _ = app.emit("transcription-error", "API key not configured");
-            return Err("API key not configured".to_string());
-        }
-
-        // Transcribe in background
         let app_clone = app.clone();
         tokio::spawn(async move {
-            match whisper::transcribe(&settings.api_key, audio_data, &settings.language).await {
-                Ok(text) => {
-                    log::info!("Transcription: {}", text);
-
-                    // Add to history
-                    {
-                        let state = app_clone.state::<AppState>();
-                        let mut history = state.history.lock().unwrap();
-                        history.add_entry(text.clone());
-                        if let Err(e) = settings::save_history(&history) {
-                            log::error!("Failed to save history: {}", e);
-                        }
-                    }
-
-                    // Inject text
-                    if let Err(e) = text_inject::inject_text(&text) {
-                        log::error!("Failed to inject text: {}", e);
-                        let _ = app_clone.emit("transcription-error", e.to_string());
-                    } else {
-                        let _ = app_clone.emit("transcription-result", text);
-                    }
-                }
-                Err(e) => {
-                    log::error!("Transcription failed: {}", e);
-                    let _ = app_clone.emit("transcription-error", e);
-                }
-            }
-            emit_status(&app_clone, Status::Idle);
+            process_transcription(app_clone, audio_data).await;
         });
     } else {
-        // Start recording
-        log::info!("toggle_recording: starting recording...");
-        let microphone = state.settings.lock().unwrap().microphone.clone();
-        let mic_ref = if microphone == "default" {
-            None
-        } else {
-            Some(microphone.as_str())
-        };
-
-        state.recorder.start_recording(mic_ref.as_deref())?;
-        log::info!("toggle_recording: recording started");
+        start_recording_with_settings(&state)?;
         emit_status(&app, Status::Recording);
     }
 
-    log::info!("toggle_recording: COMMAND EXIT");
     Ok(())
 }
 
@@ -221,7 +212,6 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
-    // Use default icon from resources
     let icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))
         .map_err(|e| format!("Failed to load tray icon: {}", e))?;
 
@@ -230,9 +220,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .menu(&menu)
         .tooltip("Taurophone")
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "quit" => {
-                app.exit(0);
-            }
+            "quit" => app.exit(0),
             "show" => {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
@@ -273,72 +261,23 @@ fn register_shortcut(app: &AppHandle, hotkey: &str) -> Result<(), String> {
 
 fn handle_shortcut_event(
     app: &AppHandle,
-    shortcut: &Shortcut,
+    _shortcut: &Shortcut,
     event: tauri_plugin_global_shortcut::ShortcutEvent,
 ) {
     if event.state != ShortcutState::Pressed {
         return;
     }
 
-    log::info!("Hotkey {:?} pressed", shortcut);
-
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
         let state = app_clone.state::<AppState>();
-        let is_recording = state.recorder.is_recording();
 
-        log::info!("Hotkey handler: is_recording={}", is_recording);
-
-        if is_recording {
-            // Clone recorder for the blocking task
+        if state.recorder.is_recording() {
             let recorder = state.recorder.clone();
 
-            // Run stop_recording in a blocking thread pool
-            let stop_result = tokio::task::spawn_blocking(move || {
-                recorder.stop_recording()
-            }).await;
-
-            match stop_result {
+            match tokio::task::spawn_blocking(move || recorder.stop_recording()).await {
                 Ok(Ok(audio_data)) => {
-                    emit_status(&app_clone, Status::Transcribing);
-                    let settings = state.settings.lock().unwrap().clone();
-                    if settings.api_key.is_empty() {
-                        emit_status(&app_clone, Status::Idle);
-                        let _ = app_clone.emit("transcription-error", "API key not configured");
-                        return;
-                    }
-                    let app_c = app_clone.clone();
-                    tokio::spawn(async move {
-                        match whisper::transcribe(&settings.api_key, audio_data, &settings.language)
-                            .await
-                        {
-                            Ok(text) => {
-                                log::info!("Transcription: {}", text);
-
-                                // Add to history
-                                {
-                                    let state = app_c.state::<AppState>();
-                                    let mut history = state.history.lock().unwrap();
-                                    history.add_entry(text.clone());
-                                    if let Err(e) = settings::save_history(&history) {
-                                        log::error!("Failed to save history: {}", e);
-                                    }
-                                }
-
-                                if let Err(e) = text_inject::inject_text(&text) {
-                                    log::error!("Failed to inject text: {}", e);
-                                    let _ = app_c.emit("transcription-error", e.to_string());
-                                } else {
-                                    let _ = app_c.emit("transcription-result", text);
-                                }
-                            }
-                            Err(e) => {
-                                log::error!("Transcription failed: {}", e);
-                                let _ = app_c.emit("transcription-error", e);
-                            }
-                        }
-                        emit_status(&app_c, Status::Idle);
-                    });
+                    process_transcription(app_clone, audio_data).await;
                 }
                 Ok(Err(e)) => {
                     log::error!("Stop recording failed: {}", e);
@@ -350,13 +289,7 @@ fn handle_shortcut_event(
                 }
             }
         } else {
-            let microphone = state.settings.lock().unwrap().microphone.clone();
-            let mic_ref = if microphone == "default" {
-                None
-            } else {
-                Some(microphone.as_str())
-            };
-            match state.recorder.start_recording(mic_ref.as_deref()) {
+            match start_recording_with_settings(&state) {
                 Ok(()) => emit_status(&app_clone, Status::Recording),
                 Err(e) => {
                     log::error!("Start recording failed: {}", e);
@@ -378,9 +311,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, shortcut, event| {
-                    handle_shortcut_event(app, shortcut, event);
-                })
+                .with_handler(handle_shortcut_event)
                 .build(),
         )
         .manage(AppState {
@@ -391,20 +322,16 @@ pub fn run() {
             clipboard: Mutex::new(arboard::Clipboard::new().expect("Failed to init clipboard")),
         })
         .setup(move |app| {
-            if true {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .level(log::LevelFilter::Info)
+                    .build(),
+            )?;
 
-            // Setup system tray
             if let Err(e) = setup_tray(app.handle()) {
                 log::error!("Failed to setup tray: {}", e);
             }
 
-            // Setup hotkey based on mode
             match hotkey_mode {
                 HotkeyMode::KeyCombination => {
                     if let Err(e) = register_shortcut(app.handle(), &hotkey) {
@@ -412,7 +339,6 @@ pub fn run() {
                     }
                 }
                 mode => {
-                    // Start double-tap listener
                     let listener = DoubleTapListener::new();
                     listener.start(app.handle().clone(), mode);
                     let state = app.state::<AppState>();

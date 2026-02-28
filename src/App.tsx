@@ -166,13 +166,10 @@ function App() {
         <div
           className={`status-indicator ${status}`}
           onClick={async () => {
-            console.log('=== CLICK: toggle_recording, current status:', status);
             try {
-              console.log('=== CLICK: calling invoke...');
               await invoke('toggle_recording');
-              console.log('=== CLICK: invoke completed successfully');
             } catch (e) {
-              console.error('=== CLICK: invoke FAILED:', e);
+              console.error('Toggle recording failed:', e);
             }
           }}
           style={{ cursor: 'pointer' }}
