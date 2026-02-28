@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Whisper Client",
+        "title": "Taurophone",
         "width": 400,
         "height": 500,
         "resizable": true,
