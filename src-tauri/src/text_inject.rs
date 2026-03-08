@@ -13,8 +13,8 @@ pub fn inject_text(text: &str) -> Result<(), String> {
     // Set new text to clipboard
     clipboard.set_text(text).map_err(|e| e.to_string())?;
 
-    // Small delay to ensure clipboard is ready
-    thread::sleep(Duration::from_millis(50));
+    // Delay to ensure clipboard is ready (macOS needs a bit more time)
+    thread::sleep(Duration::from_millis(150));
 
     // Simulate paste keystroke (platform-specific)
     simulate_paste(text)?;
@@ -66,13 +66,13 @@ fn simulate_paste(text: &str) -> Result<(), String> {
 /// This runs in-process so the Accessibility permission on Taurophone itself applies.
 #[cfg(target_os = "macos")]
 fn simulate_paste(_text: &str) -> Result<(), String> {
-    use core_graphics::event::{CGEvent, CGEventFlags, CGKeyCode, EventField};
+    use core_graphics::event::{CGEvent, CGEventFlags, CGKeyCode};
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 
     // Virtual key code for 'V' on macOS
     const KEY_V: CGKeyCode = 0x09;
 
-    let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+    let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
         .map_err(|_| "Failed to create CGEventSource".to_string())?;
 
     // Key down: Cmd+V
@@ -85,8 +85,10 @@ fn simulate_paste(_text: &str) -> Result<(), String> {
         .map_err(|_| "Failed to create key-up event".to_string())?;
     key_up.set_flags(CGEventFlags::CGEventFlagCommand);
 
-    key_down.post(core_graphics::event::CGEventTapLocation::HID);
-    key_up.post(core_graphics::event::CGEventTapLocation::HID);
+    // Post to the session (annotated session catches the focused app)
+    key_down.post(core_graphics::event::CGEventTapLocation::Session);
+    thread::sleep(Duration::from_millis(20));
+    key_up.post(core_graphics::event::CGEventTapLocation::Session);
 
     Ok(())
 }
