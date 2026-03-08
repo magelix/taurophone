@@ -163,9 +163,8 @@ mod platform {
                     return None;
                 }
 
-                if event_type != CGEventType::FlagsChanged {
-                    return None;
-                }
+                // No need to check event_type — the tap is filtered to FlagsChanged only
+                let _ = event_type;
 
                 let keycode = event.get_integer_value_field(
                     EventField::KEYBOARD_EVENT_KEYCODE,
