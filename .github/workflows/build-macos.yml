@@ -16,7 +16,7 @@ on:
 jobs:
   build-x86:
     if: github.event.inputs.arch == 'x86_64' || github.event.inputs.arch == 'both'
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
