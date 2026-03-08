@@ -62,27 +62,33 @@ fn simulate_paste(text: &str) -> Result<(), String> {
     }
 }
 
-/// Simulates Cmd+V on macOS using osascript (AppleScript).
+/// Simulates Cmd+V on macOS using CoreGraphics key events.
+/// This runs in-process so the Accessibility permission on Taurophone itself applies.
 #[cfg(target_os = "macos")]
 fn simulate_paste(_text: &str) -> Result<(), String> {
-    let result = Command::new("osascript")
-        .args([
-            "-e",
-            "tell application \"System Events\" to keystroke \"v\" using command down",
-        ])
-        .output();
+    use core_graphics::event::{CGEvent, CGEventFlags, CGKeyCode, EventField};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 
-    match result {
-        Ok(output) => {
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                Err(format!("osascript failed: {}", stderr))
-            } else {
-                Ok(())
-            }
-        }
-        Err(e) => Err(format!("Failed to run osascript: {}", e)),
-    }
+    // Virtual key code for 'V' on macOS
+    const KEY_V: CGKeyCode = 0x09;
+
+    let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+        .map_err(|_| "Failed to create CGEventSource".to_string())?;
+
+    // Key down: Cmd+V
+    let key_down = CGEvent::new_keyboard_event(source.clone(), KEY_V, true)
+        .map_err(|_| "Failed to create key-down event".to_string())?;
+    key_down.set_flags(CGEventFlags::CGEventFlagCommand);
+
+    // Key up: V (with Cmd)
+    let key_up = CGEvent::new_keyboard_event(source, KEY_V, false)
+        .map_err(|_| "Failed to create key-up event".to_string())?;
+    key_up.set_flags(CGEventFlags::CGEventFlagCommand);
+
+    key_down.post(core_graphics::event::CGEventTapLocation::HID);
+    key_up.post(core_graphics::event::CGEventTapLocation::HID);
+
+    Ok(())
 }
 
 #[cfg(test)]
