@@ -41,10 +41,7 @@
     ],
     "macOS": {
       "entitlements": null,
-      "infoPlist": {
-        "NSMicrophoneUsageDescription": "Taurophone needs microphone access for speech-to-text transcription.",
-        "NSAccessibilityUsageDescription": "Taurophone needs accessibility access for global hotkey detection (double-tap to record)."
-      }
+      "infoPlist": "Info.plist"
     }
   }
 }
