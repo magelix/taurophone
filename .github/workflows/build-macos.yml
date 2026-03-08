@@ -14,58 +14,60 @@ on:
           - both
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - target: x86_64-apple-darwin
-            runner: macos-13
-            arch: x86_64
-          - target: aarch64-apple-darwin
-            runner: macos-14
-            arch: aarch64
-    
-    # Skip if single arch selected and doesn't match
-    if: >-
-      github.event.inputs.arch == 'both' ||
-      github.event.inputs.arch == matrix.arch
-
-    runs-on: ${{ matrix.runner }}
-    
+  build-x86:
+    if: github.event.inputs.arch == 'x86_64' || github.event.inputs.arch == 'both'
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+          targets: x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: --target ${{ matrix.target }}
-
-      - name: Upload DMG
-        uses: actions/upload-artifact@v4
+          args: --target x86_64-apple-darwin
+      - uses: actions/upload-artifact@v4
         with:
-          name: Taurophone-${{ matrix.arch }}
+          name: Taurophone-x86_64
           path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app
+            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app
+          retention-days: 14
+
+  build-arm:
+    if: github.event.inputs.arch == 'aarch64' || github.event.inputs.arch == 'both'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target aarch64-apple-darwin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Taurophone-aarch64
+          path: |
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app
           retention-days: 14
