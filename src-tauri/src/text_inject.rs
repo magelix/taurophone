@@ -1,38 +1,44 @@
 use arboard::Clipboard;
 use std::process::Command;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
 /// Injects text into the currently focused application using clipboard + paste shortcut.
-/// Platform-specific: uses xdotool on Linux, osascript on macOS.
-pub fn inject_text(text: &str) -> Result<(), String> {
-    // Store original clipboard content
-    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-    let original = clipboard.get_text().ok();
-
-    // Set new text to clipboard
-    clipboard.set_text(text).map_err(|e| e.to_string())?;
-
-    // Delay to ensure clipboard is ready (macOS needs a bit more time)
-    thread::sleep(Duration::from_millis(150));
-
-    // Simulate paste keystroke (platform-specific)
-    simulate_paste(text)?;
-
-    // Small delay before restoring clipboard
-    thread::sleep(Duration::from_millis(100));
-
-    // Restore original clipboard content
-    if let Some(original_text) = original {
-        let _ = clipboard.set_text(original_text);
+/// Uses a persistent clipboard reference to avoid macOS clearing clipboard on drop.
+pub fn inject_text_with_clipboard(
+    clipboard: &Mutex<Clipboard>,
+    text: &str,
+) -> Result<(), String> {
+    // Set text to clipboard using the persistent instance
+    {
+        let mut cb = clipboard.lock().map_err(|e| e.to_string())?;
+        cb.set_text(text).map_err(|e| e.to_string())?;
     }
 
+    // Delay to ensure clipboard is ready (macOS needs time to propagate)
+    thread::sleep(Duration::from_millis(200));
+
+    // Simulate paste keystroke (platform-specific)
+    simulate_paste()?;
+
+    Ok(())
+}
+
+/// Fallback: inject text with a temporary clipboard (used if no persistent one available).
+pub fn inject_text(text: &str) -> Result<(), String> {
+    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.set_text(text).map_err(|e| e.to_string())?;
+    thread::sleep(Duration::from_millis(200));
+    simulate_paste()?;
+    // Don't drop clipboard immediately on macOS — sleep to let paste complete
+    thread::sleep(Duration::from_millis(500));
     Ok(())
 }
 
 /// Simulates Ctrl+V on Linux using xdotool.
 #[cfg(target_os = "linux")]
-fn simulate_paste(text: &str) -> Result<(), String> {
+fn simulate_paste() -> Result<(), String> {
     let result = Command::new("xdotool")
         .args(["key", "--clearmodifiers", "ctrl+v"])
         .output();
@@ -46,46 +52,31 @@ fn simulate_paste(text: &str) -> Result<(), String> {
             Ok(())
         }
         Err(e) => {
-            log::warn!("xdotool key failed: {}, trying alternative", e);
-
-            let type_result = Command::new("xdotool")
-                .args(["type", "--clearmodifiers", "--", text])
-                .output();
-
-            match type_result {
-                Ok(_) => Ok(()),
-                Err(type_err) => {
-                    Err(format!("Failed to inject text: {} / {}", e, type_err))
-                }
-            }
+            log::warn!("xdotool key failed: {}", e);
+            Err(format!("Failed to simulate paste: {}", e))
         }
     }
 }
 
 /// Simulates Cmd+V on macOS using CoreGraphics key events.
-/// This runs in-process so the Accessibility permission on Taurophone itself applies.
 #[cfg(target_os = "macos")]
-fn simulate_paste(_text: &str) -> Result<(), String> {
+fn simulate_paste() -> Result<(), String> {
     use core_graphics::event::{CGEvent, CGEventFlags, CGKeyCode};
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 
-    // Virtual key code for 'V' on macOS
     const KEY_V: CGKeyCode = 0x09;
 
     let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
         .map_err(|_| "Failed to create CGEventSource".to_string())?;
 
-    // Key down: Cmd+V
     let key_down = CGEvent::new_keyboard_event(source.clone(), KEY_V, true)
         .map_err(|_| "Failed to create key-down event".to_string())?;
     key_down.set_flags(CGEventFlags::CGEventFlagCommand);
 
-    // Key up: V (with Cmd)
     let key_up = CGEvent::new_keyboard_event(source, KEY_V, false)
         .map_err(|_| "Failed to create key-up event".to_string())?;
     key_up.set_flags(CGEventFlags::CGEventFlagCommand);
 
-    // Post to the session (annotated session catches the focused app)
     key_down.post(core_graphics::event::CGEventTapLocation::Session);
     thread::sleep(Duration::from_millis(20));
     key_up.post(core_graphics::event::CGEventTapLocation::Session);
@@ -99,7 +90,6 @@ mod tests {
 
     #[test]
     fn test_simulate_paste_command_exists() {
-        // Verify the platform-specific paste command is available
         #[cfg(target_os = "linux")]
         {
             let result = Command::new("which").arg("xdotool").output();

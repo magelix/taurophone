@@ -71,7 +71,7 @@ pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
                 }
             }
 
-            if let Err(e) = text_inject::inject_text(&text) {
+            if let Err(e) = text_inject::inject_text_with_clipboard(&state.clipboard, &text) {
                 log::error!("Failed to inject text: {}", e);
                 let _ = app.emit("transcription-error", e.to_string());
             } else {
