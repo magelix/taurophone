@@ -187,6 +187,40 @@ async fn toggle_recording(app: AppHandle, state: tauri::State<'_, AppState>) -> 
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_hotkey_ctrl_shift_space() {
+        let shortcut = parse_hotkey("Ctrl+Shift+Space").unwrap();
+        assert_eq!(shortcut.key, Code::Space);
+    }
+
+    #[test]
+    fn test_parse_hotkey_super_shift_space() {
+        let shortcut = parse_hotkey("Super+Shift+Space").unwrap();
+        assert_eq!(shortcut.key, Code::Space);
+    }
+
+    #[test]
+    fn test_parse_hotkey_cmd_alias() {
+        let shortcut = parse_hotkey("Cmd+Shift+Space").unwrap();
+        assert_eq!(shortcut.key, Code::Space);
+    }
+
+    #[test]
+    fn test_parse_hotkey_invalid() {
+        assert!(parse_hotkey("InvalidKey").is_none());
+    }
+
+    #[test]
+    fn test_parse_hotkey_key_r() {
+        let shortcut = parse_hotkey("Ctrl+R").unwrap();
+        assert_eq!(shortcut.key, Code::KeyR);
+    }
+}
+
 fn parse_hotkey(hotkey_str: &str) -> Option<Shortcut> {
     let mut modifiers = Modifiers::empty();
     let mut code = None;

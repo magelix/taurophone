@@ -23,7 +23,7 @@
     ],
     "trayIcon": {
       "iconPath": "icons/32x32.png",
-      "iconAsTemplate": false
+      "iconAsTemplate": true
     },
     "security": {
       "csp": null

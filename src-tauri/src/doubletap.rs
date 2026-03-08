@@ -97,6 +97,13 @@ impl DoubleTapListener {
 
             if let Err(e) = listen(callback) {
                 log::error!("Failed to start rdev listener: {:?}", e);
+                if cfg!(target_os = "macos") {
+                    log::error!(
+                        "On macOS, rdev requires Accessibility permission. \
+                         Go to System Settings → Privacy & Security → Accessibility \
+                         and add this application."
+                    );
+                }
             }
         });
     }
@@ -117,6 +124,48 @@ fn is_target_key(target: &Key, pressed: &Key) -> bool {
             | (Key::ShiftLeft, Key::ShiftLeft)
             | (Key::ShiftLeft, Key::ShiftRight)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_target_key_meta_left() {
+        assert!(is_target_key(&Key::MetaLeft, &Key::MetaLeft));
+        assert!(is_target_key(&Key::MetaLeft, &Key::MetaRight));
+        assert!(!is_target_key(&Key::MetaLeft, &Key::ControlLeft));
+        assert!(!is_target_key(&Key::MetaLeft, &Key::ShiftLeft));
+    }
+
+    #[test]
+    fn test_is_target_key_ctrl() {
+        assert!(is_target_key(&Key::ControlLeft, &Key::ControlLeft));
+        assert!(is_target_key(&Key::ControlLeft, &Key::ControlRight));
+        assert!(!is_target_key(&Key::ControlLeft, &Key::MetaLeft));
+        assert!(!is_target_key(&Key::ControlLeft, &Key::ShiftLeft));
+    }
+
+    #[test]
+    fn test_is_target_key_shift() {
+        assert!(is_target_key(&Key::ShiftLeft, &Key::ShiftLeft));
+        assert!(is_target_key(&Key::ShiftLeft, &Key::ShiftRight));
+        assert!(!is_target_key(&Key::ShiftLeft, &Key::MetaLeft));
+        assert!(!is_target_key(&Key::ShiftLeft, &Key::ControlLeft));
+    }
+
+    #[test]
+    fn test_is_target_key_unrelated_keys() {
+        assert!(!is_target_key(&Key::MetaLeft, &Key::KeyA));
+        assert!(!is_target_key(&Key::ControlLeft, &Key::Space));
+        assert!(!is_target_key(&Key::ShiftLeft, &Key::Return));
+    }
+
+    #[test]
+    fn test_double_tap_threshold_is_reasonable() {
+        assert!(DOUBLE_TAP_THRESHOLD_MS >= 200, "Threshold too short");
+        assert!(DOUBLE_TAP_THRESHOLD_MS <= 800, "Threshold too long");
+    }
 }
 
 async fn trigger_toggle(app: &AppHandle) {
