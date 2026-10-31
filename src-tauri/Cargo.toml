@@ -38,6 +38,9 @@ arboard = "3"
 # Config storage
 dirs = "5"
 
+# Time handling for history timestamps
+chrono = { version = "0.4", features = ["serde"] }
+
 # Global key event listening for double-tap detection (Linux only)
 [target.'cfg(target_os = "linux")'.dependencies]
 rdev = "0.5"
@@ -46,6 +49,3 @@ rdev = "0.5"
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.24"
 core-foundation = "0.10"
-
-# Time handling for history timestamps
-chrono = { version = "0.4", features = ["serde"] }
