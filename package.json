@@ -1,7 +1,7 @@
 {
   "name": "taurophone",
   "version": "1.0.0",
-  "description": "System-wide speech-to-text client powered by OpenAI Whisper",
+  "description": "System-wide speech-to-text client powered by OpenAI",
   "main": "index.js",
   "scripts": {
     "dev": "vite",

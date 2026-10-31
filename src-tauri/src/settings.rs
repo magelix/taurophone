@@ -27,6 +27,8 @@ pub struct AppSettings {
     pub microphone: String,
     #[serde(default = "default_restore_clipboard")]
     pub restore_clipboard: bool,
+    #[serde(default)]
+    pub keywords: Vec<String>,
 }
 
 fn default_restore_clipboard() -> bool {
@@ -42,6 +44,7 @@ impl Default for AppSettings {
             language: "de".to_string(),
             microphone: "default".to_string(),
             restore_clipboard: default_restore_clipboard(),
+            keywords: Vec::new(),
         }
     }
 }
@@ -103,6 +106,10 @@ fn history_path() -> PathBuf {
     config_dir().join("history.json")
 }
 
+fn failed_recording_path() -> PathBuf {
+    config_dir().join("failed_recording.wav")
+}
+
 pub fn load_settings() -> AppSettings {
     let path = config_path();
 
@@ -133,6 +140,23 @@ pub fn save_history(history: &TranscriptionHistory) -> Result<(), String> {
     let path = history_path();
     let content = serde_json::to_string_pretty(history).map_err(|e| e.to_string())?;
     fs::write(path, content).map_err(|e| e.to_string())
+}
+
+/// Keeps a recording that could not be transcribed, so it can be retried.
+pub fn save_failed_recording(audio_data: &[u8]) -> Result<(), String> {
+    fs::write(failed_recording_path(), audio_data).map_err(|e| e.to_string())
+}
+
+pub fn load_failed_recording() -> Option<Vec<u8>> {
+    fs::read(failed_recording_path()).ok()
+}
+
+pub fn has_failed_recording() -> bool {
+    failed_recording_path().exists()
+}
+
+pub fn delete_failed_recording() -> Result<(), String> {
+    fs::remove_file(failed_recording_path()).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -209,6 +233,7 @@ mod tests {
             language: "en".to_string(),
             microphone: "default".to_string(),
             restore_clipboard: false,
+            keywords: vec!["Taurophone".to_string()],
         };
 
         let json = serde_json::to_string(&settings).unwrap();
@@ -217,6 +242,7 @@ mod tests {
         assert_eq!(deserialized.hotkey_mode, HotkeyMode::DoubleTapCtrl);
         assert_eq!(deserialized.language, "en");
         assert!(!deserialized.restore_clipboard);
+        assert_eq!(deserialized.keywords, vec!["Taurophone".to_string()]);
     }
 
     #[test]
@@ -232,5 +258,6 @@ mod tests {
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert_eq!(settings.api_key, "test-key");
         assert!(settings.restore_clipboard);
+        assert!(settings.keywords.is_empty());
     }
 }

@@ -45,6 +45,20 @@ pub fn emit_status(app: &AppHandle, status: Status) {
     let _ = app.emit("status-changed", status.as_str());
 }
 
+fn add_to_history(state: &AppState, text: &str) {
+    let mut history = state.history.lock().unwrap();
+    history.add_entry(text.to_string());
+    if let Err(e) = settings::save_history(&history) {
+        log::error!("Failed to save history: {}", e);
+    }
+}
+
+fn keep_failed_recording(audio_data: &[u8]) {
+    if let Err(e) = settings::save_failed_recording(audio_data) {
+        log::error!("Failed to keep recording: {}", e);
+    }
+}
+
 /// Processes audio data: transcribes it, saves to history, and injects text.
 /// Shared by both the Tauri command and hotkey/doubletap handlers.
 pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
@@ -52,6 +66,7 @@ pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
     let settings = state.settings.lock().unwrap().clone();
 
     if settings.api_key.is_empty() {
+        keep_failed_recording(&audio_data);
         emit_status(&app, Status::Idle);
         let _ = app.emit("transcription-error", "API key not configured");
         return;
@@ -59,17 +74,18 @@ pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
 
     emit_status(&app, Status::Transcribing);
 
-    match whisper::transcribe(&settings.api_key, audio_data, &settings.language).await {
+    match whisper::transcribe(
+        &settings.api_key,
+        &audio_data,
+        &settings.language,
+        &settings.keywords,
+    )
+    .await
+    {
         Ok(text) => {
             log::info!("Transcription: {}", text);
 
-            {
-                let mut history = state.history.lock().unwrap();
-                history.add_entry(text.clone());
-                if let Err(e) = settings::save_history(&history) {
-                    log::error!("Failed to save history: {}", e);
-                }
-            }
+            add_to_history(&state, &text);
 
             let saved_clipboard = if settings.restore_clipboard {
                 text_inject::save_clipboard(&state.clipboard)
@@ -99,6 +115,7 @@ pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
         }
         Err(e) => {
             log::error!("Transcription failed: {}", e);
+            keep_failed_recording(&audio_data);
             let _ = app.emit("transcription-error", e);
         }
     }
@@ -184,6 +201,38 @@ fn clear_history(state: tauri::State<AppState>) -> Result<(), String> {
 fn copy_to_clipboard(text: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
     let mut clipboard = state.clipboard.lock().unwrap();
     clipboard.set_text(&text).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn has_failed_recording() -> bool {
+    settings::has_failed_recording()
+}
+
+/// Transcribes the kept recording. The text goes to the history and the clipboard,
+/// because the focus is on this window and pasting would miss the original text field.
+#[tauri::command]
+async fn retry_failed_recording(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let audio_data = settings::load_failed_recording().ok_or("No failed recording")?;
+    let settings = state.settings.lock().unwrap().clone();
+
+    let text = whisper::transcribe(
+        &settings.api_key,
+        &audio_data,
+        &settings.language,
+        &settings.keywords,
+    )
+    .await?;
+
+    add_to_history(&state, &text);
+    state
+        .clipboard
+        .lock()
+        .unwrap()
+        .set_text(&text)
+        .map_err(|e| e.to_string())?;
+    settings::delete_failed_recording()?;
+
+    Ok(text)
 }
 
 #[tauri::command]
@@ -409,6 +458,8 @@ pub fn run() {
             get_history,
             clear_history,
             copy_to_clipboard,
+            has_failed_recording,
+            retry_failed_recording,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

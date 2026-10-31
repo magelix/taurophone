@@ -13,6 +13,7 @@ interface AppSettings {
   language: string;
   microphone: string;
   restore_clipboard: boolean;
+  keywords: string[];
 }
 
 interface HistoryEntry {
@@ -32,10 +33,13 @@ function App() {
     language: 'de',
     microphone: 'default',
     restore_clipboard: true,
+    keywords: [],
   });
   const [microphones, setMicrophones] = useState<string[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const [hasFailedRecording, setHasFailedRecording] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const loadHistory = async () => {
     try {
@@ -43,6 +47,14 @@ function App() {
       setHistory(entries);
     } catch (e) {
       console.error('Failed to load history:', e);
+    }
+  };
+
+  const checkFailedRecording = async () => {
+    try {
+      setHasFailedRecording(await invoke<boolean>('has_failed_recording'));
+    } catch (e) {
+      console.error('Failed to check for failed recording:', e);
     }
   };
 
@@ -60,6 +72,9 @@ function App() {
     // Load history
     loadHistory();
 
+    // A recording may be left over from an earlier failure
+    checkFailedRecording();
+
     // Listen for status changes from backend
     const unlistenStatus = listen<string>('status-changed', (event) => {
       setStatus(event.payload as AppStatus);
@@ -75,6 +90,7 @@ function App() {
     // Listen for errors
     const unlistenError = listen<string>('transcription-error', (event) => {
       showToast(`Error: ${event.payload}`);
+      checkFailedRecording();
     });
 
     return () => {
@@ -98,6 +114,20 @@ function App() {
     } catch (error) {
       console.error('Failed to save settings:', error);
       showToast('Failed to save settings');
+    }
+  };
+
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    try {
+      await invoke<string>('retry_failed_recording');
+      setHasFailedRecording(false);
+      showToast('Transcribed and copied to clipboard');
+      loadHistory();
+    } catch (error) {
+      showToast(`Error: ${error}`);
+    } finally {
+      setIsRetrying(false);
     }
   };
 
@@ -182,6 +212,11 @@ function App() {
         <div className="hotkey-hint">
           Press <kbd>{getHotkeyHint()}</kbd> to start/stop recording
         </div>
+        {hasFailedRecording && (
+          <button className="btn btn-secondary" onClick={handleRetry} disabled={isRetrying}>
+            {isRetrying ? 'Transcribing...' : 'Retry failed recording'}
+          </button>
+        )}
       </main>
 
       {showSettings && (

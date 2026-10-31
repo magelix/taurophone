@@ -5,6 +5,28 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+/// Speech models do not need more, and it keeps the upload small.
+const TARGET_SAMPLE_RATE: u32 = 16000;
+
+/// Reduces the sample rate by averaging the samples of each output step.
+fn downsample(samples: &[i16], from_rate: u32, to_rate: u32) -> Vec<i16> {
+    if from_rate <= to_rate {
+        return samples.to_vec();
+    }
+
+    let (from_rate, to_rate) = (from_rate as u64, to_rate as u64);
+    let output_len = samples.len() as u64 * to_rate / from_rate;
+
+    (0..output_len)
+        .map(|i| {
+            let start = (i * from_rate / to_rate) as usize;
+            let end = ((i + 1) * from_rate / to_rate) as usize;
+            let chunk = &samples[start..end];
+            (chunk.iter().map(|&s| s as i64).sum::<i64>() / chunk.len() as i64) as i16
+        })
+        .collect()
+}
+
 /// Thread-safe audio recording state.
 /// The cpal Stream is not Send, so it lives in a dedicated thread.
 #[derive(Clone)]
@@ -238,9 +260,11 @@ impl AudioState {
 
         log::info!("Recorded {} samples at {} Hz", samples.len(), sample_rate);
 
+        let samples = downsample(&samples, sample_rate, TARGET_SAMPLE_RATE);
+
         let spec = WavSpec {
             channels: 1,
-            sample_rate,
+            sample_rate: sample_rate.min(TARGET_SAMPLE_RATE),
             bits_per_sample: 16,
             sample_format: hound::SampleFormat::Int,
         };
@@ -264,3 +288,34 @@ impl AudioState {
 
 unsafe impl Send for AudioState {}
 unsafe impl Sync for AudioState {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_downsample_averages_samples() {
+        let samples = [100, 200, 300, 400, 500, 600];
+        assert_eq!(downsample(&samples, 48000, 16000), vec![200, 500]);
+    }
+
+    #[test]
+    fn test_downsample_handles_non_integer_ratio() {
+        let samples = vec![1000; 44100];
+        let result = downsample(&samples, 44100, 16000);
+        assert_eq!(result.len(), 16000);
+        assert!(result.iter().all(|&s| s == 1000));
+    }
+
+    #[test]
+    fn test_downsample_keeps_target_rate() {
+        let samples = [1, 2, 3];
+        assert_eq!(downsample(&samples, 16000, 16000), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_downsample_does_not_overflow_on_full_scale() {
+        let samples = [i16::MAX; 3];
+        assert_eq!(downsample(&samples, 48000, 16000), vec![i16::MAX]);
+    }
+}

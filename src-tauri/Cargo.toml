@@ -28,7 +28,7 @@ tauri-plugin-shell = "2"
 cpal = "0.15"
 hound = "3.5"
 
-# HTTP client for Whisper API
+# HTTP client for the transcription API
 reqwest = { version = "0.12", features = ["multipart", "json"] }
 tokio = { version = "1", features = ["full"] }
 

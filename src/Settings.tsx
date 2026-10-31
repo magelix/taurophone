@@ -65,6 +65,7 @@ interface AppSettings {
   language: string;
   microphone: string;
   restore_clipboard: boolean;
+  keywords: string[];
 }
 
 interface SettingsProps {
@@ -97,10 +98,17 @@ const HOTKEY_OPTIONS = [
 
 function Settings({ settings, microphones, onSave, onClose }: SettingsProps) {
   const [formData, setFormData] = useState<AppSettings>({ ...settings });
+  const [keywordsText, setKeywordsText] = useState(settings.keywords.join('\n'));
+
+  const keywords = keywordsText
+    .split('\n')
+    .map((keyword) => keyword.trim())
+    .filter((keyword) => keyword !== '');
+  const hasInvalidKeywords = keywords.some((keyword) => /[<>]/.test(keyword));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    onSave({ ...formData, keywords });
   };
 
   const handleChange = (field: keyof AppSettings) => (
@@ -175,6 +183,25 @@ function Settings({ settings, microphones, onSave, onClose }: SettingsProps) {
           </div>
 
           <div className="form-group">
+            <label htmlFor="keywords">Custom Terms</label>
+            <textarea
+              id="keywords"
+              rows={4}
+              value={keywordsText}
+              onChange={(e) => setKeywordsText(e.target.value)}
+              placeholder={'One term per line, e.g.\nTaurophone'}
+            />
+            {hasInvalidKeywords ? (
+              <p className="form-error">Terms must not contain &lt; or &gt;.</p>
+            ) : (
+              <p className="form-hint">
+                Names and terms that are often misheard. They are sent to OpenAI with each
+                recording.
+              </p>
+            )}
+          </div>
+
+          <div className="form-group">
             <label className="checkbox-label">
               <input
                 type="checkbox"
@@ -195,7 +222,7 @@ function Settings({ settings, microphones, onSave, onClose }: SettingsProps) {
             <button type="button" className="btn btn-secondary" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary">
+            <button type="submit" className="btn btn-primary" disabled={hasInvalidKeywords}>
               Save
             </button>
           </div>

@@ -1,6 +1,6 @@
 # Taurophone 🎤
 
-System-wide speech-to-text desktop app powered by [OpenAI Whisper API](https://platform.openai.com/docs/guides/speech-to-text).  
+System-wide speech-to-text desktop app powered by the [OpenAI speech-to-text API](https://platform.openai.com/docs/guides/speech-to-text).  
 Built with **Tauri 2.0** (Rust) + **React** + **TypeScript**.
 
 ![Taurophone Screenshot](docs/screenshot.png)
@@ -23,6 +23,8 @@ chmod +x Taurophone-*.AppImage
 - ⌨️ **Double-tap trigger** — Double-tap `Ctrl`, `Shift`, or `Super/Meta` key to toggle recording
 - 📋 **Text injection** — Transcribed text is automatically pasted into the active text field
 - ♻️ **Clipboard restore** — Your copied text, image or files come back after pasting (optional)
+- 📖 **Custom terms** — A list of names and terms that helps with words that are often misheard
+- 🔁 **Retry** — A recording that could not be transcribed is kept and can be sent again
 - 📜 **History** — Browse and copy past transcriptions
 - 🌍 **Multi-language** — German, English, French, Italian
 - 🎨 **Dark theme** — Easy on the eyes
@@ -32,7 +34,7 @@ chmod +x Taurophone-*.AppImage
 
 1. Press your configured hotkey or double-tap your trigger key
 2. Speak — the app records from your microphone
-3. Press again to stop — audio is sent to OpenAI Whisper API
+3. Press again to stop — audio is sent to the OpenAI speech-to-text API
 4. Transcribed text is automatically typed into whatever text field has focus
 
 ### Double-tap mode
@@ -108,7 +110,7 @@ cargo tauri dev
 | Backend | Rust |
 | Frontend | React + TypeScript + Vite |
 | Audio | cpal (cross-platform) |
-| Transcription | OpenAI Whisper API (whisper-1, ~$0.006/min) |
+| Transcription | OpenAI speech-to-text API (gpt-transcribe) |
 | Clipboard | arboard |
 | Global keys | rdev + tauri-plugin-global-shortcut |
 
