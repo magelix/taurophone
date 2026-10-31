@@ -64,6 +64,7 @@ interface AppSettings {
   hotkey_mode: 'double_tap_super' | 'double_tap_ctrl' | 'double_tap_shift' | 'key_combination';
   language: string;
   microphone: string;
+  restore_clipboard: boolean;
 }
 
 interface SettingsProps {
@@ -171,6 +172,23 @@ function Settings({ settings, microphones, onSave, onClose }: SettingsProps) {
               ]}
               onChange={handleSelectChange('microphone')}
             />
+          </div>
+
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={formData.restore_clipboard}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, restore_clipboard: e.target.checked }))
+                }
+              />
+              Restore clipboard after paste
+            </label>
+            <p className="form-hint">
+              Puts your copied text, image or files back. When off, the transcription stays in
+              the clipboard.
+            </p>
           </div>
 
           <div className="modal-actions">

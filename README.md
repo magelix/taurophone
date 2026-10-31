@@ -22,6 +22,7 @@ chmod +x Taurophone-*.AppImage
 - 🎙️ **Global hotkey** — Start/stop recording with `Ctrl+Shift+Space` (configurable)
 - ⌨️ **Double-tap trigger** — Double-tap `Ctrl`, `Shift`, or `Super/Meta` key to toggle recording
 - 📋 **Text injection** — Transcribed text is automatically pasted into the active text field
+- ♻️ **Clipboard restore** — Your copied text, image or files come back after pasting (optional)
 - 📜 **History** — Browse and copy past transcriptions
 - 🌍 **Multi-language** — German, English, French, Italian
 - 🎨 **Dark theme** — Easy on the eyes

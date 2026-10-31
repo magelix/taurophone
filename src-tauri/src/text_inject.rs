@@ -1,8 +1,53 @@
-use arboard::Clipboard;
+use arboard::{Clipboard, ImageData};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
+
+/// Time the target application gets to read the clipboard before it is restored.
+pub const RESTORE_DELAY: Duration = Duration::from_millis(800);
+
+/// Clipboard content saved before pasting, so it can be put back afterwards.
+pub enum SavedClipboard {
+    Files(Vec<PathBuf>),
+    Text(String),
+    Image(ImageData<'static>),
+}
+
+/// Reads the current clipboard content.
+/// Files come first because macOS also exposes a copied file as plain text.
+pub fn save_clipboard(clipboard: &Mutex<Clipboard>) -> Option<SavedClipboard> {
+    let mut cb = clipboard.lock().ok()?;
+
+    if let Ok(files) = cb.get().file_list() {
+        return Some(SavedClipboard::Files(files));
+    }
+    if let Ok(text) = cb.get_text() {
+        return Some(SavedClipboard::Text(text));
+    }
+    cb.get_image().ok().map(SavedClipboard::Image)
+}
+
+/// Puts saved content back, unless the clipboard changed since `pasted_text` was set.
+pub fn restore_clipboard(
+    clipboard: &Mutex<Clipboard>,
+    pasted_text: &str,
+    saved: SavedClipboard,
+) -> Result<(), String> {
+    let mut cb = clipboard.lock().map_err(|e| e.to_string())?;
+
+    if cb.get_text().ok().as_deref() != Some(pasted_text) {
+        return Ok(());
+    }
+
+    match saved {
+        SavedClipboard::Files(files) => cb.set().file_list(&files),
+        SavedClipboard::Text(text) => cb.set_text(text),
+        SavedClipboard::Image(image) => cb.set_image(image),
+    }
+    .map_err(|e| e.to_string())
+}
 
 /// Injects text into the currently focused application using clipboard + paste shortcut.
 /// Uses a persistent clipboard reference to avoid macOS clearing clipboard on drop.
@@ -10,6 +55,10 @@ pub fn inject_text_with_clipboard(
     clipboard: &Mutex<Clipboard>,
     text: &str,
 ) -> Result<(), String> {
+    if text.is_empty() {
+        return Ok(());
+    }
+
     // Set text to clipboard using the persistent instance
     {
         let mut cb = clipboard.lock().map_err(|e| e.to_string())?;

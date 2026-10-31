@@ -71,11 +71,30 @@ pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
                 }
             }
 
+            let saved_clipboard = if settings.restore_clipboard {
+                text_inject::save_clipboard(&state.clipboard)
+            } else {
+                None
+            };
+
             if let Err(e) = text_inject::inject_text_with_clipboard(&state.clipboard, &text) {
                 log::error!("Failed to inject text: {}", e);
                 let _ = app.emit("transcription-error", e.to_string());
             } else {
-                let _ = app.emit("transcription-result", text);
+                let _ = app.emit("transcription-result", text.clone());
+
+                if let Some(saved) = saved_clipboard {
+                    let app_clone = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(text_inject::RESTORE_DELAY).await;
+                        let state = app_clone.state::<AppState>();
+                        if let Err(e) =
+                            text_inject::restore_clipboard(&state.clipboard, &text, saved)
+                        {
+                            log::error!("Failed to restore clipboard: {}", e);
+                        }
+                    });
+                }
             }
         }
         Err(e) => {

@@ -12,6 +12,7 @@ interface AppSettings {
   hotkey_mode: 'double_tap_super' | 'double_tap_ctrl' | 'double_tap_shift' | 'key_combination';
   language: string;
   microphone: string;
+  restore_clipboard: boolean;
 }
 
 interface HistoryEntry {
@@ -30,6 +31,7 @@ function App() {
     hotkey_mode: 'key_combination',
     language: 'de',
     microphone: 'default',
+    restore_clipboard: true,
   });
   const [microphones, setMicrophones] = useState<string[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);

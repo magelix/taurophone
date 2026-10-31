@@ -25,6 +25,12 @@ pub struct AppSettings {
     pub hotkey_mode: HotkeyMode,
     pub language: String,
     pub microphone: String,
+    #[serde(default = "default_restore_clipboard")]
+    pub restore_clipboard: bool,
+}
+
+fn default_restore_clipboard() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -35,6 +41,7 @@ impl Default for AppSettings {
             hotkey_mode: HotkeyMode::KeyCombination,
             language: "de".to_string(),
             microphone: "default".to_string(),
+            restore_clipboard: default_restore_clipboard(),
         }
     }
 }
@@ -201,6 +208,7 @@ mod tests {
             hotkey_mode: HotkeyMode::DoubleTapCtrl,
             language: "en".to_string(),
             microphone: "default".to_string(),
+            restore_clipboard: false,
         };
 
         let json = serde_json::to_string(&settings).unwrap();
@@ -208,5 +216,21 @@ mod tests {
         assert_eq!(deserialized.api_key, "test-key");
         assert_eq!(deserialized.hotkey_mode, HotkeyMode::DoubleTapCtrl);
         assert_eq!(deserialized.language, "en");
+        assert!(!deserialized.restore_clipboard);
+    }
+
+    #[test]
+    fn test_settings_without_restore_clipboard_keep_values() {
+        let json = r#"{
+            "api_key": "test-key",
+            "hotkey": "Ctrl+Shift+Space",
+            "hotkey_mode": "double_tap_ctrl",
+            "language": "en",
+            "microphone": "default"
+        }"#;
+
+        let settings: AppSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.api_key, "test-key");
+        assert!(settings.restore_clipboard);
     }
 }
