@@ -210,6 +210,7 @@ mod platform {
                 let runloop = CFRunLoop::get_current();
                 runloop.add_source(&loop_source, kCFRunLoopCommonModes);
                 tap.enable();
+                log::info!("Double-tap listener started");
                 CFRunLoop::run_current();
             },
             Err(_) => {

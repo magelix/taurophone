@@ -170,14 +170,16 @@ fn update_hotkey_listener(app: &AppHandle, settings: &AppSettings) -> Result<(),
         HotkeyMode::KeyCombination => {
             register_shortcut(app, &settings.hotkey)?;
         }
-        mode => {
-            let listener = DoubleTapListener::new();
-            listener.start(app.clone(), mode.clone());
-            *state.doubletap_listener.lock().unwrap() = Some(listener);
-        }
+        mode => start_doubletap_listener(app, mode.clone()),
     }
 
     Ok(())
+}
+
+fn start_doubletap_listener(app: &AppHandle, mode: HotkeyMode) {
+    let listener = DoubleTapListener::new();
+    listener.start(app.clone(), mode);
+    *app.state::<AppState>().doubletap_listener.lock().unwrap() = Some(listener);
 }
 
 #[tauri::command]
@@ -408,6 +410,7 @@ pub fn run() {
     let history = settings::load_history();
     let hotkey = settings.hotkey.clone();
     let hotkey_mode = settings.hotkey_mode.clone();
+    let startup_mode = hotkey_mode.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -434,17 +437,9 @@ pub fn run() {
                 log::error!("Failed to setup tray: {}", e);
             }
 
-            match hotkey_mode {
-                HotkeyMode::KeyCombination => {
-                    if let Err(e) = register_shortcut(app.handle(), &hotkey) {
-                        log::error!("Failed to register global shortcut: {}", e);
-                    }
-                }
-                mode => {
-                    let listener = DoubleTapListener::new();
-                    listener.start(app.handle().clone(), mode);
-                    let state = app.state::<AppState>();
-                    *state.doubletap_listener.lock().unwrap() = Some(listener);
+            if hotkey_mode == HotkeyMode::KeyCombination {
+                if let Err(e) = register_shortcut(app.handle(), &hotkey) {
+                    log::error!("Failed to register global shortcut: {}", e);
                 }
             }
 
@@ -461,6 +456,14 @@ pub fn run() {
             has_failed_recording,
             retry_failed_recording,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(move |app, event| {
+            // Started here, because on macOS a tap created during setup receives no key events
+            if let tauri::RunEvent::Ready = event {
+                if startup_mode != HotkeyMode::KeyCombination {
+                    start_doubletap_listener(app, startup_mode.clone());
+                }
+            }
+        });
 }
