@@ -227,6 +227,13 @@ body {
   color: var(--text-secondary);
 }
 
+.permission-warning {
+  max-width: 340px;
+  font-size: 0.85rem;
+  text-align: center;
+  color: #ff6b6b;
+}
+
 .form-error {
   margin-top: 4px;
   font-size: 0.8rem;

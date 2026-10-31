@@ -1,11 +1,14 @@
 mod audio;
 mod doubletap;
+mod permissions;
+mod replacements;
 mod settings;
 mod text_inject;
 mod whisper;
 
 use audio::AudioState;
 use doubletap::DoubleTapListener;
+use permissions::Permissions;
 use settings::{AppSettings, HistoryEntry, HotkeyMode, TranscriptionHistory};
 use std::sync::Mutex;
 use tauri::{
@@ -59,6 +62,18 @@ fn keep_failed_recording(audio_data: &[u8]) {
     }
 }
 
+async fn transcribe_audio(settings: &AppSettings, audio_data: &[u8]) -> Result<String, String> {
+    let text = whisper::transcribe(
+        &settings.api_key,
+        audio_data,
+        &settings.language,
+        &settings.keywords,
+    )
+    .await?;
+
+    Ok(replacements::apply(&text, &settings.replacements))
+}
+
 /// Processes audio data: transcribes it, saves to history, and injects text.
 /// Shared by both the Tauri command and hotkey/doubletap handlers.
 pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
@@ -74,14 +89,7 @@ pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
 
     emit_status(&app, Status::Transcribing);
 
-    match whisper::transcribe(
-        &settings.api_key,
-        &audio_data,
-        &settings.language,
-        &settings.keywords,
-    )
-    .await
-    {
+    match transcribe_audio(&settings, &audio_data).await {
         Ok(text) => {
             log::info!("Transcription: {}", text);
 
@@ -206,6 +214,11 @@ fn copy_to_clipboard(text: String, state: tauri::State<'_, AppState>) -> Result<
 }
 
 #[tauri::command]
+fn check_permissions() -> Permissions {
+    permissions::check()
+}
+
+#[tauri::command]
 fn has_failed_recording() -> bool {
     settings::has_failed_recording()
 }
@@ -217,13 +230,7 @@ async fn retry_failed_recording(state: tauri::State<'_, AppState>) -> Result<Str
     let audio_data = settings::load_failed_recording().ok_or("No failed recording")?;
     let settings = state.settings.lock().unwrap().clone();
 
-    let text = whisper::transcribe(
-        &settings.api_key,
-        &audio_data,
-        &settings.language,
-        &settings.keywords,
-    )
-    .await?;
+    let text = transcribe_audio(&settings, &audio_data).await?;
 
     add_to_history(&state, &text);
     state
@@ -453,6 +460,7 @@ pub fn run() {
             get_history,
             clear_history,
             copy_to_clipboard,
+            check_permissions,
             has_failed_recording,
             retry_failed_recording,
         ])
@@ -461,7 +469,10 @@ pub fn run() {
         .run(move |app, event| {
             // Started here, because on macOS a tap created during setup receives no key events
             if let tauri::RunEvent::Ready = event {
-                if startup_mode != HotkeyMode::KeyCombination {
+                let uses_double_tap = startup_mode != HotkeyMode::KeyCombination;
+                permissions::request_missing(uses_double_tap);
+
+                if uses_double_tap {
                     start_doubletap_listener(app, startup_mode.clone());
                 }
             }

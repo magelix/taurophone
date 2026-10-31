@@ -6,6 +6,11 @@ import History from './History';
 
 type AppStatus = 'idle' | 'recording' | 'transcribing';
 
+interface Permissions {
+  input_monitoring: boolean;
+  accessibility: boolean;
+}
+
 interface AppSettings {
   api_key: string;
   hotkey: string;
@@ -14,6 +19,7 @@ interface AppSettings {
   microphone: string;
   restore_clipboard: boolean;
   keywords: string[];
+  replacements: { from: string; to: string }[];
 }
 
 interface HistoryEntry {
@@ -34,12 +40,17 @@ function App() {
     microphone: 'default',
     restore_clipboard: true,
     keywords: [],
+    replacements: [],
   });
   const [microphones, setMicrophones] = useState<string[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [hasFailedRecording, setHasFailedRecording] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [permissions, setPermissions] = useState<Permissions>({
+    input_monitoring: true,
+    accessibility: true,
+  });
 
   const loadHistory = async () => {
     try {
@@ -55,6 +66,14 @@ function App() {
       setHasFailedRecording(await invoke<boolean>('has_failed_recording'));
     } catch (e) {
       console.error('Failed to check for failed recording:', e);
+    }
+  };
+
+  const checkPermissions = async () => {
+    try {
+      setPermissions(await invoke<Permissions>('check_permissions'));
+    } catch (e) {
+      console.error('Failed to check permissions:', e);
     }
   };
 
@@ -75,6 +94,10 @@ function App() {
     // A recording may be left over from an earlier failure
     checkFailedRecording();
 
+    // Permissions are granted outside the app, so check again on return
+    checkPermissions();
+    window.addEventListener('focus', checkPermissions);
+
     // Listen for status changes from backend
     const unlistenStatus = listen<string>('status-changed', (event) => {
       setStatus(event.payload as AppStatus);
@@ -94,6 +117,7 @@ function App() {
     });
 
     return () => {
+      window.removeEventListener('focus', checkPermissions);
       unlistenStatus.then((fn) => fn());
       unlistenTranscription.then((fn) => fn());
       unlistenError.then((fn) => fn());
@@ -176,6 +200,13 @@ function App() {
     }
   };
 
+  const missingPermissions = [
+    !permissions.accessibility && 'Accessibility',
+    !permissions.input_monitoring &&
+      settings.hotkey_mode !== 'key_combination' &&
+      'Input Monitoring',
+  ].filter(Boolean);
+
   return (
     <div className="app">
       <header className="header">
@@ -212,6 +243,12 @@ function App() {
         <div className="hotkey-hint">
           Press <kbd>{getHotkeyHint()}</kbd> to start/stop recording
         </div>
+        {missingPermissions.length > 0 && (
+          <p className="permission-warning">
+            Missing macOS permission: {missingPermissions.join(', ')}. Remove Taurophone in
+            Privacy &amp; Security, add it again and restart the app.
+          </p>
+        )}
         {hasFailedRecording && (
           <button className="btn btn-secondary" onClick={handleRetry} disabled={isRetrying}>
             {isRetrying ? 'Transcribing...' : 'Retry failed recording'}

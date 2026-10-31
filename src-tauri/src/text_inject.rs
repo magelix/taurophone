@@ -115,6 +115,10 @@ fn simulate_paste() -> Result<(), String> {
 
     const KEY_V: CGKeyCode = 0x09;
 
+    if !crate::permissions::can_post_events() {
+        return Err("Accessibility permission missing. The text is in the clipboard.".to_string());
+    }
+
     let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
         .map_err(|_| "Failed to create CGEventSource".to_string())?;
 

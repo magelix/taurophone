@@ -41,6 +41,7 @@
     ],
     "macOS": {
       "entitlements": "./Entitlements.plist",
+      "minimumSystemVersion": "10.15",
       "infoPlist": "Info.plist",
       "signingIdentity": "-"
     }

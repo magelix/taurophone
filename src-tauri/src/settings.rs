@@ -18,6 +18,12 @@ impl Default for HotkeyMode {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Replacement {
+    pub from: String,
+    pub to: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub api_key: String,
@@ -29,6 +35,8 @@ pub struct AppSettings {
     pub restore_clipboard: bool,
     #[serde(default)]
     pub keywords: Vec<String>,
+    #[serde(default)]
+    pub replacements: Vec<Replacement>,
 }
 
 fn default_restore_clipboard() -> bool {
@@ -45,6 +53,7 @@ impl Default for AppSettings {
             microphone: "default".to_string(),
             restore_clipboard: default_restore_clipboard(),
             keywords: Vec::new(),
+            replacements: Vec::new(),
         }
     }
 }
@@ -234,6 +243,10 @@ mod tests {
             microphone: "default".to_string(),
             restore_clipboard: false,
             keywords: vec!["Taurophone".to_string()],
+            replacements: vec![Replacement {
+                from: "Taurophon".to_string(),
+                to: "Taurophone".to_string(),
+            }],
         };
 
         let json = serde_json::to_string(&settings).unwrap();
@@ -243,6 +256,7 @@ mod tests {
         assert_eq!(deserialized.language, "en");
         assert!(!deserialized.restore_clipboard);
         assert_eq!(deserialized.keywords, vec!["Taurophone".to_string()]);
+        assert_eq!(deserialized.replacements, settings.replacements);
     }
 
     #[test]
@@ -259,5 +273,6 @@ mod tests {
         assert_eq!(settings.api_key, "test-key");
         assert!(settings.restore_clipboard);
         assert!(settings.keywords.is_empty());
+        assert!(settings.replacements.is_empty());
     }
 }

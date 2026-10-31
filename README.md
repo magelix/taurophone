@@ -24,6 +24,7 @@ chmod +x Taurophone-*.AppImage
 - 📋 **Text injection** — Transcribed text is automatically pasted into the active text field
 - ♻️ **Clipboard restore** — Your copied text, image or files come back after pasting (optional)
 - 📖 **Custom terms** — A list of names and terms that helps with words that are often misheard
+- ✏️ **Replacements** — Corrects words that keep coming out wrong, e.g. `Taurophon -> Taurophone`
 - 🔁 **Retry** — A recording that could not be transcribed is kept and can be sent again
 - 📜 **History** — Browse and copy past transcriptions
 - 🌍 **Multi-language** — German, English, French, Italian

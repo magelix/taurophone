@@ -66,6 +66,7 @@ interface AppSettings {
   microphone: string;
   restore_clipboard: boolean;
   keywords: string[];
+  replacements: { from: string; to: string }[];
 }
 
 interface SettingsProps {
@@ -106,9 +107,25 @@ function Settings({ settings, microphones, onSave, onClose }: SettingsProps) {
     .filter((keyword) => keyword !== '');
   const hasInvalidKeywords = keywords.some((keyword) => /[<>]/.test(keyword));
 
+  const [replacementsText, setReplacementsText] = useState(
+    settings.replacements.map(({ from, to }) => `${from} -> ${to}`).join('\n')
+  );
+  const replacementLines = replacementsText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .map((line) => line.split('->').map((part) => part.trim()));
+  const hasInvalidReplacements = replacementLines.some(
+    (parts) => parts.length !== 2 || parts[0] === '' || parts[1] === ''
+  );
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({ ...formData, keywords });
+    onSave({
+      ...formData,
+      keywords,
+      replacements: replacementLines.map(([from, to]) => ({ from, to })),
+    });
   };
 
   const handleChange = (field: keyof AppSettings) => (
@@ -202,6 +219,25 @@ function Settings({ settings, microphones, onSave, onClose }: SettingsProps) {
           </div>
 
           <div className="form-group">
+            <label htmlFor="replacements">Replacements</label>
+            <textarea
+              id="replacements"
+              rows={3}
+              value={replacementsText}
+              onChange={(e) => setReplacementsText(e.target.value)}
+              placeholder="Taurophon -> Taurophone"
+            />
+            {hasInvalidReplacements ? (
+              <p className="form-error">Use one "wrong -&gt; right" pair per line.</p>
+            ) : (
+              <p className="form-hint">
+                Corrects whole words after the transcription, upper and lower case must match.
+                Stays on this computer.
+              </p>
+            )}
+          </div>
+
+          <div className="form-group">
             <label className="checkbox-label">
               <input
                 type="checkbox"
@@ -222,7 +258,11 @@ function Settings({ settings, microphones, onSave, onClose }: SettingsProps) {
             <button type="button" className="btn btn-secondary" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={hasInvalidKeywords}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={hasInvalidKeywords || hasInvalidReplacements}
+            >
               Save
             </button>
           </div>
