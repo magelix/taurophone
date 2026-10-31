@@ -258,7 +258,13 @@ impl AudioState {
             return Err("No audio recorded".to_string());
         }
 
-        log::info!("Recorded {} samples at {} Hz", samples.len(), sample_rate);
+        let peak = samples.iter().map(|s| s.unsigned_abs()).max().unwrap_or(0);
+        log::info!(
+            "Recorded {} samples at {} Hz, peak level {}",
+            samples.len(),
+            sample_rate,
+            peak
+        );
 
         let samples = downsample(&samples, sample_rate, TARGET_SAMPLE_RATE);
 

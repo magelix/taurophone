@@ -62,8 +62,11 @@ pub async fn transcribe(
         .await
         .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-    result["text"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "No text in response".to_string())
+    let text = result["text"].as_str().ok_or("No text in response")?;
+
+    if text.trim().is_empty() {
+        return Err("No speech recognized. Check the microphone permission.".to_string());
+    }
+
+    Ok(text.to_string())
 }
