@@ -318,6 +318,14 @@ fn parse_hotkey(hotkey_str: &str) -> Option<Shortcut> {
     code.map(|c| Shortcut::new(Some(modifiers), c))
 }
 
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
@@ -332,12 +340,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .tooltip("Taurophone")
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => app.exit(0),
-            "show" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }
+            "show" => show_main_window(app),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -347,11 +350,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 ..
             } = event
             {
-                let app = tray.app_handle();
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                show_main_window(tray.app_handle());
             }
         })
         .build(app)?;
@@ -452,6 +451,13 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            // Dictation keeps working in the background, only Quit ends the app
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_settings,
             save_settings,
@@ -466,9 +472,9 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(move |app, event| {
+        .run(move |app, event| match event {
             // Started here, because on macOS a tap created during setup receives no key events
-            if let tauri::RunEvent::Ready = event {
+            tauri::RunEvent::Ready => {
                 let uses_double_tap = startup_mode != HotkeyMode::KeyCombination;
                 permissions::request_missing(uses_double_tap);
 
@@ -476,5 +482,8 @@ pub fn run() {
                     start_doubletap_listener(app, startup_mode.clone());
                 }
             }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => show_main_window(app),
+            _ => {}
         });
 }

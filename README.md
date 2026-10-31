@@ -25,6 +25,7 @@ chmod +x Taurophone-*.AppImage
 - ♻️ **Clipboard restore** — Your copied text, image or files come back after pasting (optional)
 - 📖 **Custom terms** — A list of names and terms that helps with words that are often misheard
 - ✏️ **Replacements** — Corrects words that keep coming out wrong, e.g. `Taurophon -> Taurophone`
+- 🪟 **Runs in the background** — Closing the window keeps the app running, Quit in the tray ends it
 - 🔁 **Retry** — A recording that could not be transcribed is kept and can be sent again
 - 📜 **History** — Browse and copy past transcriptions
 - 🌍 **Multi-language** — German, English, French, Italian
