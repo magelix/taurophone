@@ -16,7 +16,7 @@ on:
 jobs:
   build-x86:
     if: github.event.inputs.arch == 'x86_64' || github.event.inputs.arch == 'both'
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,7 +45,7 @@ jobs:
 
   build-arm:
     if: github.event.inputs.arch == 'aarch64' || github.event.inputs.arch == 'both'
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
