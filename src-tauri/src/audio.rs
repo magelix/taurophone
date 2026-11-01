@@ -1,6 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use hound::{WavSpec, WavWriter};
 use std::io::Cursor;
+use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -8,23 +9,41 @@ use std::thread;
 /// Speech models do not need more, and it keeps the upload small.
 const TARGET_SAMPLE_RATE: u32 = 16000;
 
-/// Reduces the sample rate by averaging the samples of each output step.
+fn output_len(input_len: usize, from_rate: u32, to_rate: u32) -> usize {
+    (input_len as u64 * to_rate as u64 / from_rate as u64) as usize
+}
+
+/// Calculates the given output samples at the new rate: an average of the input samples
+/// when reducing the rate, otherwise an interpolation between two of them.
+fn resample(samples: &[i16], from_rate: u32, to_rate: u32, output: Range<usize>) -> Vec<i16> {
+    let (from_rate, to_rate) = (from_rate as u64, to_rate as u64);
+
+    output
+        .map(|i| {
+            let position = i as u64 * from_rate;
+            let start = (position / to_rate) as usize;
+
+            if from_rate > to_rate {
+                let end = ((i as u64 + 1) * from_rate / to_rate) as usize;
+                let chunk = &samples[start..end];
+                (chunk.iter().map(|&s| s as i64).sum::<i64>() / chunk.len() as i64) as i16
+            } else {
+                let first = samples[start] as i64;
+                let second = samples.get(start + 1).map_or(first, |&s| s as i64);
+                let fraction = (position % to_rate) as i64;
+                (first + (second - first) * fraction / to_rate as i64) as i16
+            }
+        })
+        .collect()
+}
+
 fn downsample(samples: &[i16], from_rate: u32, to_rate: u32) -> Vec<i16> {
     if from_rate <= to_rate {
         return samples.to_vec();
     }
 
-    let (from_rate, to_rate) = (from_rate as u64, to_rate as u64);
-    let output_len = samples.len() as u64 * to_rate / from_rate;
-
-    (0..output_len)
-        .map(|i| {
-            let start = (i * from_rate / to_rate) as usize;
-            let end = ((i + 1) * from_rate / to_rate) as usize;
-            let chunk = &samples[start..end];
-            (chunk.iter().map(|&s| s as i64).sum::<i64>() / chunk.len() as i64) as i16
-        })
-        .collect()
+    let output = 0..output_len(samples.len(), from_rate, to_rate);
+    resample(samples, from_rate, to_rate, output)
 }
 
 /// Thread-safe audio recording state.
@@ -287,6 +306,18 @@ impl AudioState {
         Ok(cursor.into_inner())
     }
 
+    /// Returns the audio recorded since the last call, at the given sample rate.
+    /// `sent` counts the output samples that were already returned.
+    pub fn new_samples(&self, sent: &mut usize, target_rate: u32) -> Vec<i16> {
+        let samples = self.samples.lock().unwrap();
+        let sample_rate = *self.sample_rate.lock().unwrap();
+        let available = output_len(samples.len(), sample_rate, target_rate);
+
+        let result = resample(&samples, sample_rate, target_rate, *sent..available);
+        *sent = available;
+        result
+    }
+
     pub fn is_recording(&self) -> bool {
         self.is_recording.load(Ordering::SeqCst)
     }
@@ -298,6 +329,37 @@ unsafe impl Sync for AudioState {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_resample_interpolates_when_raising_the_rate() {
+        let samples = [0, 300, 600];
+        assert_eq!(resample(&samples, 16000, 24000, 0..4), vec![0, 200, 400, 600]);
+    }
+
+    #[test]
+    fn test_resample_in_steps_matches_resample_at_once() {
+        let samples: Vec<i16> = (0..4410).map(|i| (i % 300) as i16).collect();
+        let at_once = resample(&samples, 44100, 24000, 0..2400);
+
+        let mut in_steps = resample(&samples, 44100, 24000, 0..1000);
+        in_steps.extend(resample(&samples, 44100, 24000, 1000..2400));
+
+        assert_eq!(in_steps, at_once);
+    }
+
+    #[test]
+    fn test_new_samples_returns_only_new_audio() {
+        let state = AudioState::new();
+        *state.sample_rate.lock().unwrap() = 24000;
+        state.samples.lock().unwrap().extend_from_slice(&[1, 2]);
+
+        let mut sent = 0;
+        assert_eq!(state.new_samples(&mut sent, 24000), vec![1, 2]);
+        assert_eq!(state.new_samples(&mut sent, 24000), Vec::<i16>::new());
+
+        state.samples.lock().unwrap().push(3);
+        assert_eq!(state.new_samples(&mut sent, 24000), vec![3]);
+    }
 
     #[test]
     fn test_downsample_averages_samples() {

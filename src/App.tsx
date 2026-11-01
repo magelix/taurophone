@@ -20,6 +20,7 @@ interface AppSettings {
   restore_clipboard: boolean;
   keywords: string[];
   replacements: { from: string; to: string }[];
+  transcription_mode: 'file' | 'realtime_turn' | 'realtime_live';
 }
 
 interface HistoryEntry {
@@ -41,6 +42,7 @@ function App() {
     restore_clipboard: true,
     keywords: [],
     replacements: [],
+    transcription_mode: 'file',
   });
   const [microphones, setMicrophones] = useState<string[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);

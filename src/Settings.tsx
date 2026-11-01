@@ -67,6 +67,7 @@ interface AppSettings {
   restore_clipboard: boolean;
   keywords: string[];
   replacements: { from: string; to: string }[];
+  transcription_mode: 'file' | 'realtime_turn' | 'realtime_live';
 }
 
 interface SettingsProps {
@@ -88,6 +89,12 @@ const HOTKEY_MODES = [
   { value: 'double_tap_ctrl', label: 'Double-tap Ctrl' },
   { value: 'double_tap_shift', label: 'Double-tap Shift' },
   { value: 'key_combination', label: 'Key combination' },
+];
+
+const TRANSCRIPTION_MODES = [
+  { value: 'file', label: 'File upload (gpt-transcribe)' },
+  { value: 'realtime_turn', label: 'Realtime (gpt-transcribe)' },
+  { value: 'realtime_live', label: 'Realtime live (gpt-live-transcribe)' },
 ];
 
 const HOTKEY_OPTIONS = [
@@ -196,6 +203,16 @@ function Settings({ settings, microphones, onSave, onClose }: SettingsProps) {
                 ...microphones.map((mic) => ({ value: mic, label: mic })),
               ]}
               onChange={handleSelectChange('microphone')}
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="transcription_mode">Transcription</label>
+            <CustomSelect
+              id="transcription_mode"
+              value={formData.transcription_mode}
+              options={TRANSCRIPTION_MODES}
+              onChange={handleSelectChange('transcription_mode')}
             />
           </div>
 

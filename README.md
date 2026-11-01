@@ -26,6 +26,7 @@ chmod +x Taurophone-*.AppImage
 - 📖 **Custom terms** — A list of names and terms that helps with words that are often misheard
 - ✏️ **Replacements** — Corrects words that keep coming out wrong, e.g. `Taurophon -> Taurophone`
 - 🪟 **Runs in the background** — Closing the window keeps the app running, Quit in the tray ends it
+- ⚡ **Realtime modes** — Audio is sent while you speak, the file upload stays as a fallback
 - 🔁 **Retry** — A recording that could not be transcribed is kept and can be sent again
 - 📜 **History** — Browse and copy past transcriptions
 - 🌍 **Multi-language** — German, English, French, Italian

@@ -1,6 +1,7 @@
 mod audio;
 mod doubletap;
 mod permissions;
+mod realtime;
 mod replacements;
 mod settings;
 mod text_inject;
@@ -9,8 +10,10 @@ mod whisper;
 use audio::AudioState;
 use doubletap::DoubleTapListener;
 use permissions::Permissions;
-use settings::{AppSettings, HistoryEntry, HotkeyMode, TranscriptionHistory};
+use realtime::RealtimeSession;
+use settings::{AppSettings, HistoryEntry, HotkeyMode, TranscriptionHistory, TranscriptionMode};
 use std::sync::Mutex;
+use std::time::Instant;
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
@@ -25,6 +28,7 @@ pub struct AppState {
     pub history: Mutex<TranscriptionHistory>,
     doubletap_listener: Mutex<Option<DoubleTapListener>>,
     clipboard: Mutex<arboard::Clipboard>,
+    realtime: Mutex<Option<RealtimeSession>>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -62,14 +66,40 @@ fn keep_failed_recording(audio_data: &[u8]) {
     }
 }
 
-async fn transcribe_audio(settings: &AppSettings, audio_data: &[u8]) -> Result<String, String> {
-    let text = whisper::transcribe(
+async fn upload_audio(settings: &AppSettings, audio_data: &[u8]) -> Result<String, String> {
+    whisper::transcribe(
         &settings.api_key,
         audio_data,
         &settings.language,
         &settings.keywords,
     )
-    .await?;
+    .await
+}
+
+/// Falls back to the file upload, so a realtime problem does not lose the dictation.
+async fn transcribe_recording(
+    settings: &AppSettings,
+    realtime: Option<RealtimeSession>,
+    audio_data: &[u8],
+) -> Result<String, String> {
+    let started = Instant::now();
+
+    let text = match realtime {
+        Some(session) => match session.finish().await {
+            Ok(text) => text,
+            Err(e) => {
+                log::error!("Realtime failed, uploading the file instead: {}", e);
+                upload_audio(settings, audio_data).await?
+            }
+        },
+        None => upload_audio(settings, audio_data).await?,
+    };
+
+    log::info!(
+        "Transcription took {} ms, mode {:?}",
+        started.elapsed().as_millis(),
+        settings.transcription_mode
+    );
 
     Ok(replacements::apply(&text, &settings.replacements))
 }
@@ -79,6 +109,7 @@ async fn transcribe_audio(settings: &AppSettings, audio_data: &[u8]) -> Result<S
 pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
     let state = app.state::<AppState>();
     let settings = state.settings.lock().unwrap().clone();
+    let realtime = state.realtime.lock().unwrap().take();
 
     if settings.api_key.is_empty() {
         keep_failed_recording(&audio_data);
@@ -89,7 +120,7 @@ pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
 
     emit_status(&app, Status::Transcribing);
 
-    match transcribe_audio(&settings, &audio_data).await {
+    match transcribe_recording(&settings, realtime, &audio_data).await {
         Ok(text) => {
             log::info!("Transcription: {}", text);
 
@@ -133,13 +164,20 @@ pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
 
 /// Starts recording with the configured microphone.
 pub fn start_recording_with_settings(state: &AppState) -> Result<(), String> {
-    let microphone = state.settings.lock().unwrap().microphone.clone();
-    let mic_ref = if microphone == "default" {
+    let settings = state.settings.lock().unwrap().clone();
+    let mic_ref = if settings.microphone == "default" {
         None
     } else {
-        Some(microphone)
+        Some(settings.microphone.as_str())
     };
-    state.recorder.start_recording(mic_ref.as_deref())
+    state.recorder.start_recording(mic_ref)?;
+
+    if settings.transcription_mode != TranscriptionMode::File && !settings.api_key.is_empty() {
+        let session = RealtimeSession::start(&settings, state.recorder.clone());
+        *state.realtime.lock().unwrap() = Some(session);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -230,7 +268,7 @@ async fn retry_failed_recording(state: tauri::State<'_, AppState>) -> Result<Str
     let audio_data = settings::load_failed_recording().ok_or("No failed recording")?;
     let settings = state.settings.lock().unwrap().clone();
 
-    let text = transcribe_audio(&settings, &audio_data).await?;
+    let text = transcribe_recording(&settings, None, &audio_data).await?;
 
     add_to_history(&state, &text);
     state
@@ -431,6 +469,7 @@ pub fn run() {
             history: Mutex::new(history),
             doubletap_listener: Mutex::new(None),
             clipboard: Mutex::new(arboard::Clipboard::new().expect("Failed to init clipboard")),
+            realtime: Mutex::new(None),
         })
         .setup(move |app| {
             app.handle().plugin(

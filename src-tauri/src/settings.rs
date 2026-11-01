@@ -18,6 +18,15 @@ impl Default for HotkeyMode {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptionMode {
+    #[default]
+    File,
+    RealtimeTurn,
+    RealtimeLive,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Replacement {
     pub from: String,
@@ -37,6 +46,8 @@ pub struct AppSettings {
     pub keywords: Vec<String>,
     #[serde(default)]
     pub replacements: Vec<Replacement>,
+    #[serde(default)]
+    pub transcription_mode: TranscriptionMode,
 }
 
 fn default_restore_clipboard() -> bool {
@@ -54,6 +65,7 @@ impl Default for AppSettings {
             restore_clipboard: default_restore_clipboard(),
             keywords: Vec::new(),
             replacements: Vec::new(),
+            transcription_mode: TranscriptionMode::default(),
         }
     }
 }
@@ -247,6 +259,7 @@ mod tests {
                 from: "Taurophon".to_string(),
                 to: "Taurophone".to_string(),
             }],
+            transcription_mode: TranscriptionMode::RealtimeLive,
         };
 
         let json = serde_json::to_string(&settings).unwrap();
@@ -257,6 +270,7 @@ mod tests {
         assert!(!deserialized.restore_clipboard);
         assert_eq!(deserialized.keywords, vec!["Taurophone".to_string()]);
         assert_eq!(deserialized.replacements, settings.replacements);
+        assert_eq!(deserialized.transcription_mode, TranscriptionMode::RealtimeLive);
     }
 
     #[test]
@@ -274,5 +288,6 @@ mod tests {
         assert!(settings.restore_clipboard);
         assert!(settings.keywords.is_empty());
         assert!(settings.replacements.is_empty());
+        assert_eq!(settings.transcription_mode, TranscriptionMode::File);
     }
 }
