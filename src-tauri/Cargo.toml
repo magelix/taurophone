@@ -1,6 +1,6 @@
 [package]
 name = "taurophone"
-version = "0.1.0"
+version = "0.2.0"
 description = "Taurophone - Speech-to-Text Desktop App"
 authors = ["you"]
 license = ""
