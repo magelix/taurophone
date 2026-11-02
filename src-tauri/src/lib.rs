@@ -70,7 +70,7 @@ async fn upload_audio(settings: &AppSettings, audio_data: &[u8]) -> Result<Strin
     whisper::transcribe(
         &settings.api_key,
         audio_data,
-        &settings.language,
+        settings.api_language(),
         &settings.keywords,
     )
     .await
@@ -101,7 +101,13 @@ async fn transcribe_recording(
         settings.transcription_mode
     );
 
-    Ok(replacements::apply(&text, &settings.replacements))
+    let text = replacements::apply(&text, &settings.replacements);
+
+    if settings.uses_swiss_spelling() {
+        return Ok(replacements::to_swiss_spelling(&text));
+    }
+
+    Ok(text)
 }
 
 /// Processes audio data: transcribes it, saves to history, and injects text.
@@ -122,7 +128,7 @@ pub async fn process_transcription(app: AppHandle, audio_data: Vec<u8>) {
 
     match transcribe_recording(&settings, realtime, &audio_data).await {
         Ok(text) => {
-            log::info!("Transcription: {}", text);
+            log::info!("Transcribed {} characters", text.chars().count());
 
             add_to_history(&state, &text);
 

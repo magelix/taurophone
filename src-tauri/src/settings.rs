@@ -54,6 +54,17 @@ fn default_restore_clipboard() -> bool {
     true
 }
 
+impl AppSettings {
+    /// The API only knows the language, not regional variants like de-CH.
+    pub fn api_language(&self) -> &str {
+        self.language.split('-').next().unwrap_or(&self.language)
+    }
+
+    pub fn uses_swiss_spelling(&self) -> bool {
+        self.language == "de-CH"
+    }
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -199,6 +210,20 @@ mod tests {
         let settings = AppSettings::default();
         assert_eq!(settings.hotkey, default_hotkey());
         assert_eq!(settings.hotkey_mode, HotkeyMode::KeyCombination);
+    }
+
+    #[test]
+    fn test_swiss_german_uses_german_for_the_api() {
+        let settings = AppSettings {
+            language: "de-CH".to_string(),
+            ..AppSettings::default()
+        };
+        assert_eq!(settings.api_language(), "de");
+        assert!(settings.uses_swiss_spelling());
+
+        let settings = AppSettings::default();
+        assert_eq!(settings.api_language(), "de");
+        assert!(!settings.uses_swiss_spelling());
     }
 
     #[test]

@@ -61,7 +61,7 @@ fn session_update(settings: &AppSettings) -> Value {
         "gpt-transcribe"
     };
 
-    let mut transcription = json!({ "model": model, "languages": [settings.language] });
+    let mut transcription = json!({ "model": model, "languages": [settings.api_language()] });
     if !settings.keywords.is_empty() {
         transcription["keywords"] = json!(settings.keywords);
     }
@@ -274,10 +274,13 @@ mod tests {
 
     #[test]
     fn test_session_update_turn_has_no_delay_or_empty_keywords() {
-        let update = session_update(&settings(TranscriptionMode::RealtimeTurn, Vec::new()));
+        let mut settings = settings(TranscriptionMode::RealtimeTurn, Vec::new());
+        settings.language = "de-CH".to_string();
+        let update = session_update(&settings);
         let transcription = &update["session"]["audio"]["input"]["transcription"];
 
         assert_eq!(transcription["model"], "gpt-transcribe");
+        assert_eq!(transcription["languages"][0], "de");
         assert!(transcription.get("delay").is_none());
         assert!(transcription.get("keywords").is_none());
     }

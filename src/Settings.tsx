@@ -79,6 +79,7 @@ interface SettingsProps {
 
 const LANGUAGES = [
   { code: 'de', name: 'Deutsch' },
+  { code: 'de-CH', name: 'Deutsch (Schweiz)' },
   { code: 'en', name: 'English' },
   { code: 'fr', name: 'Français' },
   { code: 'it', name: 'Italiano' },
@@ -223,7 +224,7 @@ function Settings({ settings, microphones, onSave, onClose }: SettingsProps) {
               rows={4}
               value={keywordsText}
               onChange={(e) => setKeywordsText(e.target.value)}
-              placeholder={'One term per line, e.g.\nTaurophone'}
+              placeholder={'Empty. One term per line, for example:\nTaurophone'}
             />
             {hasInvalidKeywords ? (
               <p className="form-error">Terms must not contain &lt; or &gt;.</p>
@@ -242,7 +243,7 @@ function Settings({ settings, microphones, onSave, onClose }: SettingsProps) {
               rows={3}
               value={replacementsText}
               onChange={(e) => setReplacementsText(e.target.value)}
-              placeholder="Taurophon -> Taurophone"
+              placeholder="Empty. Example: Taurophon -> Taurophone"
             />
             {hasInvalidReplacements ? (
               <p className="form-error">Use one "wrong -&gt; right" pair per line.</p>

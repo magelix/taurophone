@@ -10,6 +10,11 @@ pub fn apply(text: &str, replacements: &[Replacement]) -> String {
         })
 }
 
+/// Swiss spelling differs from German only in writing ss instead of ß.
+pub fn to_swiss_spelling(text: &str) -> String {
+    text.replace('ß', "ss")
+}
+
 fn replace_whole_word(text: &str, from: &str, to: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut copied = 0;
@@ -68,6 +73,11 @@ mod tests {
     fn test_is_case_sensitive() {
         let list = [replacement("Taurophon", "Taurophone")];
         assert_eq!(apply("taurophon", &list), "taurophon");
+    }
+
+    #[test]
+    fn test_swiss_spelling_replaces_sharp_s() {
+        assert_eq!(to_swiss_spelling("großformatig und Straße"), "grossformatig und Strasse");
     }
 
     #[test]
