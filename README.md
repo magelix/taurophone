@@ -10,9 +10,10 @@ Built with **Tauri 2.0** (Rust) + **React** + **TypeScript**.
 
 **[⬇️ Download latest release](https://github.com/magelix/taurophone/releases/latest)**
 
-Available as AppImage for Linux x86_64. Download, make executable, run:
+Available as DMG for macOS and as AppImage for Linux x86_64. On Linux, install `xdotool`, make the file executable and run it:
 
 ```bash
+sudo apt-get install xdotool
 chmod +x Taurophone-*.AppImage
 ./Taurophone-*.AppImage
 ```
@@ -115,7 +116,7 @@ cargo tauri dev
 | Audio | cpal (cross-platform) |
 | Transcription | OpenAI speech-to-text API (gpt-transcribe) |
 | Clipboard | arboard |
-| Global keys | rdev + tauri-plugin-global-shortcut |
+| Global keys | rdev (Linux), CGEventTap (macOS), tauri-plugin-global-shortcut |
 
 ## Platform Support
 
@@ -123,7 +124,7 @@ cargo tauri dev
 |---|---|
 | Linux (X11) | ✅ Supported |
 | Linux (Wayland) | ⚠️ Partial (global hotkeys may not work) |
-| macOS | 🔜 Planned |
+| macOS | ✅ Supported |
 | Windows | 🔜 Planned |
 
 ## License

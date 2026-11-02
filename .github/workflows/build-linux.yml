@@ -1,0 +1,42 @@
+name: Build Linux
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/linux-build
+
+jobs:
+  build-appimage:
+    # Oldest supported base, so the AppImage also runs on newer systems
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libasound2-dev \
+            libssl-dev \
+            libxdo-dev \
+            libfuse2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npx tauri build --bundles appimage
+        env:
+          NO_STRIP: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Taurophone-linux-amd64
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          retention-days: 14
