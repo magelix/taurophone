@@ -10,27 +10,37 @@ Built with **Tauri 2.0** (Rust) + **React** + **TypeScript**.
 
 **[⬇️ Download latest release](https://github.com/magelix/taurophone/releases/latest)**
 
-Available as DMG for macOS and as AppImage for Linux x86_64. On Linux, install `xdotool`, make the file executable and run it:
+Available as AppImage for Linux x86_64 and as DMG for macOS 10.15 or later (Intel and Apple Silicon).
+
+**Linux:** Install `xdotool`, make the file executable and run it:
 
 ```bash
 sudo apt-get install xdotool
-chmod +x Taurophone-*.AppImage
-./Taurophone-*.AppImage
+chmod +x Taurophone_*.AppImage
+./Taurophone_*.AppImage
 ```
+
+**macOS:** Move the app from the DMG to `/Applications`. The builds are only ad-hoc signed, so grant these permissions after installing and again after every update:
+
+| Permission | Needed for |
+|---|---|
+| Microphone | Recording |
+| Input Monitoring | Double-tap trigger |
+| Accessibility | Pasting the text |
 
 ## Features
 
 - 🎙️ **Global hotkey** — Start/stop recording with `Ctrl+Shift+Space` (configurable)
 - ⌨️ **Double-tap trigger** — Double-tap `Ctrl`, `Shift`, or `Super/Meta` key to toggle recording
-- 📋 **Text injection** — Transcribed text is automatically pasted into the active text field
+- 📋 **Text injection** — Transcribed text is automatically pasted into the active text field, also in terminals
 - ♻️ **Clipboard restore** — Your copied text, image or files come back after pasting (optional)
 - 📖 **Custom terms** — A list of names and terms that helps with words that are often misheard
 - ✏️ **Replacements** — Corrects words that keep coming out wrong, e.g. `Taurophon -> Taurophone`
-- 🪟 **Runs in the background** — Closing the window keeps the app running, Quit in the tray ends it
+- 🪟 **Runs in the background** — Closing the window keeps the app running, Quit in the tray ends it. Starting it again shows the existing window
 - ⚡ **Realtime modes** — Audio is sent while you speak, the file upload stays as a fallback
 - 🔁 **Retry** — A recording that could not be transcribed is kept and can be sent again
 - 📜 **History** — Browse and copy past transcriptions
-- 🌍 **Multi-language** — German, English, French, Italian
+- 🌍 **Multi-language** — German, Swiss German spelling, English, French, Italian
 - 🎨 **Dark theme** — Easy on the eyes
 - ⚙️ **Configurable** — Choose your microphone, language, hotkey, and trigger mode
 
@@ -39,7 +49,9 @@ chmod +x Taurophone-*.AppImage
 1. Press your configured hotkey or double-tap your trigger key
 2. Speak — the app records from your microphone
 3. Press again to stop — audio is sent to the OpenAI speech-to-text API
-4. Transcribed text is automatically typed into whatever text field has focus
+4. Transcribed text is automatically pasted into whatever text field has focus
+
+On Linux the text goes to the clipboard and the primary selection and is pasted with `Shift+Insert`, because `Ctrl+V` does not paste in terminals.
 
 ### Double-tap mode
 
@@ -52,6 +64,8 @@ Instead of a key combination, you can configure Taurophone to listen for a quick
 | Double-tap Super | Tap `Super`/`Meta`/`⌘` twice within 400ms |
 
 This works similar to macOS dictation (double-tap Fn).
+
+A quick `Ctrl+C` followed by `Ctrl+V` also counts as a double-tap of `Ctrl`. If that happens to you, use Shift or Super as the trigger key.
 
 ## Setup
 
@@ -77,6 +91,7 @@ sudo apt-get install -y \
   librsvg2-dev \
   libasound2-dev \
   libssl-dev \
+  libxdo-dev \
   xdotool
 
 # Rust
@@ -115,7 +130,7 @@ cargo tauri dev
 | Frontend | React + TypeScript + Vite |
 | Audio | cpal (cross-platform) |
 | Transcription | OpenAI speech-to-text API (gpt-transcribe) |
-| Clipboard | arboard |
+| Clipboard | arboard, GTK for restoring files on Linux |
 | Global keys | rdev (Linux), CGEventTap (macOS), tauri-plugin-global-shortcut |
 
 ## Platform Support
