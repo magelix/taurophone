@@ -91,6 +91,13 @@ fn restore_files(_cb: &mut Clipboard, files: Vec<PathBuf>) -> Result<(), arboard
     Ok(())
 }
 
+/// GTK separates file lists with CRLF, arboard only splits at the LF.
+#[cfg(target_os = "linux")]
+fn without_carriage_return(file: &std::path::Path) -> &std::path::Path {
+    file.to_str()
+        .map_or(file, |path| std::path::Path::new(path.trim_end_matches('\r')))
+}
+
 /// Must run on the GTK main thread.
 #[cfg(target_os = "linux")]
 fn offer_files(files: &[PathBuf]) -> Result<(), String> {
@@ -101,7 +108,7 @@ fn offer_files(files: &[PathBuf]) -> Result<(), String> {
 
     let uris = files
         .iter()
-        .map(|file| gtk::glib::filename_to_uri(file, None).map(String::from))
+        .map(|file| gtk::glib::filename_to_uri(without_carriage_return(file), None).map(String::from))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?
         .join("\n");
@@ -237,6 +244,16 @@ fn simulate_paste() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_carriage_return_is_removed_from_file_list() {
+        let file = PathBuf::from("/tmp/Mein Ordner/a.html\r");
+        assert_eq!(
+            without_carriage_return(&file),
+            std::path::Path::new("/tmp/Mein Ordner/a.html")
+        );
+    }
 
     #[test]
     fn test_simulate_paste_command_exists() {
