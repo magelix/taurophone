@@ -49,6 +49,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # Global key event listening for double-tap detection (Linux only)
 [target.'cfg(target_os = "linux")'.dependencies]
 rdev = "0.5"
+gtk = "0.18"
 
 # macOS native event tap
 [target.'cfg(target_os = "macos")'.dependencies]

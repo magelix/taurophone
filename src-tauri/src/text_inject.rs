@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+use arboard::{GetExtLinux, LinuxClipboardKind, SetExtLinux};
 use arboard::{Clipboard, ImageData};
 use std::path::PathBuf;
 use std::process::Command;
@@ -9,7 +11,13 @@ use std::time::Duration;
 pub const RESTORE_DELAY: Duration = Duration::from_millis(800);
 
 /// Clipboard content saved before pasting, so it can be put back afterwards.
-pub enum SavedClipboard {
+pub struct SavedClipboard {
+    content: Option<SavedContent>,
+    #[cfg(target_os = "linux")]
+    primary: Option<String>,
+}
+
+enum SavedContent {
     Files(Vec<PathBuf>),
     Text(String),
     Image(ImageData<'static>),
@@ -20,13 +28,19 @@ pub enum SavedClipboard {
 pub fn save_clipboard(clipboard: &Mutex<Clipboard>) -> Option<SavedClipboard> {
     let mut cb = clipboard.lock().ok()?;
 
-    if let Ok(files) = cb.get().file_list() {
-        return Some(SavedClipboard::Files(files));
-    }
-    if let Ok(text) = cb.get_text() {
-        return Some(SavedClipboard::Text(text));
-    }
-    cb.get_image().ok().map(SavedClipboard::Image)
+    let content = if let Ok(files) = cb.get().file_list() {
+        Some(SavedContent::Files(files))
+    } else if let Ok(text) = cb.get_text() {
+        Some(SavedContent::Text(text))
+    } else {
+        cb.get_image().ok().map(SavedContent::Image)
+    };
+
+    Some(SavedClipboard {
+        content,
+        #[cfg(target_os = "linux")]
+        primary: cb.get().clipboard(LinuxClipboardKind::Primary).text().ok(),
+    })
 }
 
 /// Puts saved content back, unless the clipboard changed since `pasted_text` was set.
@@ -37,16 +51,94 @@ pub fn restore_clipboard(
 ) -> Result<(), String> {
     let mut cb = clipboard.lock().map_err(|e| e.to_string())?;
 
+    #[cfg(target_os = "linux")]
+    if let Some(text) = saved.primary {
+        let current = cb.get().clipboard(LinuxClipboardKind::Primary).text();
+        if current.ok().as_deref() == Some(pasted_text) {
+            cb.set()
+                .clipboard(LinuxClipboardKind::Primary)
+                .text(text)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
     if cb.get_text().ok().as_deref() != Some(pasted_text) {
         return Ok(());
     }
 
-    match saved {
-        SavedClipboard::Files(files) => cb.set().file_list(&files),
-        SavedClipboard::Text(text) => cb.set_text(text),
-        SavedClipboard::Image(image) => cb.set_image(image),
+    match saved.content {
+        Some(SavedContent::Files(files)) => restore_files(&mut cb, files),
+        Some(SavedContent::Text(text)) => cb.set_text(text),
+        Some(SavedContent::Image(image)) => cb.set_image(image),
+        None => Ok(()),
     }
     .map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn restore_files(cb: &mut Clipboard, files: Vec<PathBuf>) -> Result<(), arboard::Error> {
+    cb.set().file_list(&files)
+}
+
+/// Linux file managers only paste a format arboard cannot offer, so GTK provides the files.
+#[cfg(target_os = "linux")]
+fn restore_files(_cb: &mut Clipboard, files: Vec<PathBuf>) -> Result<(), arboard::Error> {
+    gtk::glib::MainContext::default().invoke(move || {
+        if let Err(e) = offer_files(&files) {
+            log::error!("Failed to restore files: {}", e);
+        }
+    });
+    Ok(())
+}
+
+/// Must run on the GTK main thread.
+#[cfg(target_os = "linux")]
+fn offer_files(files: &[PathBuf]) -> Result<(), String> {
+    use gtk::{TargetEntry, TargetFlags};
+
+    const COPIED_FILES: u32 = 0;
+    const URI_LIST: u32 = 1;
+
+    let uris = files
+        .iter()
+        .map(|file| gtk::glib::filename_to_uri(file, None).map(String::from))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?
+        .join("\n");
+
+    let targets = [
+        TargetEntry::new("x-special/gnome-copied-files", TargetFlags::empty(), COPIED_FILES),
+        TargetEntry::new("text/uri-list", TargetFlags::empty(), URI_LIST),
+    ];
+
+    let clipboard = gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD);
+    let offered = clipboard.set_with_data(&targets, move |_, data, info| {
+        let content = match info {
+            COPIED_FILES => format!("copy\n{}", uris),
+            _ => uris.clone(),
+        };
+        data.set(&data.target(), 8, content.as_bytes());
+    });
+
+    if offered {
+        Ok(())
+    } else {
+        Err("GTK could not take over the clipboard".to_string())
+    }
+}
+
+/// Puts the text where the paste shortcut reads it.
+/// Linux terminals paste Shift+Insert from the primary selection, other apps from the clipboard.
+fn set_paste_text(cb: &mut Clipboard, text: &str) -> Result<(), String> {
+    cb.set_text(text).map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "linux")]
+    cb.set()
+        .clipboard(LinuxClipboardKind::Primary)
+        .text(text)
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 /// Injects text into the currently focused application using clipboard + paste shortcut.
@@ -62,7 +154,7 @@ pub fn inject_text_with_clipboard(
     // Set text to clipboard using the persistent instance
     {
         let mut cb = clipboard.lock().map_err(|e| e.to_string())?;
-        cb.set_text(text).map_err(|e| e.to_string())?;
+        set_paste_text(&mut cb, text)?;
     }
 
     // Delay to ensure clipboard is ready (macOS needs time to propagate)
@@ -77,7 +169,7 @@ pub fn inject_text_with_clipboard(
 /// Fallback: inject text with a temporary clipboard (used if no persistent one available).
 pub fn inject_text(text: &str) -> Result<(), String> {
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-    clipboard.set_text(text).map_err(|e| e.to_string())?;
+    set_paste_text(&mut clipboard, text)?;
     thread::sleep(Duration::from_millis(200));
     simulate_paste()?;
     // Don't drop clipboard immediately on macOS — sleep to let paste complete
@@ -85,18 +177,23 @@ pub fn inject_text(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Simulates Ctrl+V on Linux using xdotool.
+/// Simulates Shift+Insert on Linux using xdotool.
+/// Ctrl+V is no paste shortcut in terminals, Shift+Insert works in terminals and other apps.
 #[cfg(target_os = "linux")]
 fn simulate_paste() -> Result<(), String> {
     let result = Command::new("xdotool")
-        .args(["key", "--clearmodifiers", "ctrl+v"])
+        .args(["key", "--clearmodifiers", "shift+Insert"])
         .output();
 
     match result {
         Ok(output) => {
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                log::warn!("xdotool warning: {}", stderr);
+                log::warn!("xdotool failed: {}", stderr);
+                return Err(format!(
+                    "Failed to simulate paste: {}. The text is in the clipboard.",
+                    stderr.trim()
+                ));
             }
             Ok(())
         }
