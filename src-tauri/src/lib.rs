@@ -463,6 +463,10 @@ pub fn run() {
     let startup_mode = hotkey_mode.clone();
 
     tauri::Builder::default()
+        // Must come first: a second instance would record and paste every dictation again
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app)
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
